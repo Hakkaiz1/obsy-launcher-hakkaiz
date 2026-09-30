@@ -26,8 +26,3 @@ node_modules
 # Obsy runtime data & user profiles
 .obsy/
 *.key
-
-# Addons sources (only compiled zip archives in addons/dist/ are committed)
-addons/src/
-!addons/dist/*.zip
-!addons/catalog.json

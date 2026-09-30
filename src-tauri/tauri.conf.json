@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Obsy Launcher",
+  "productName": "DBC Super Launcher",
   "version": "1.0.1",
   "identifier": "com.obsy-official.obsy-launcher",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "Obsy Launcher",
+        "title": "DBC Super Launcher",
         "width": 1024,
         "height": 600,
         "minWidth": 800,

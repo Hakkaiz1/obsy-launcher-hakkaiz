@@ -1,11 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { useLauncherStore, type Language } from "@/state";
+import { useLauncherStore } from "@/state";
 import { AnimatePresence, m, type Variants } from "framer-motion";
 import {
   CheckCircle2,
   ChevronRight,
   Gamepad2,
-  Globe,
   UserCircle2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -30,22 +29,16 @@ const containerVariants: Variants = {
 export const Onboarding = ({ onComplete }: OnboardingProps) => {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
-  const { state, updateState, profiles } = useLauncherStore();
+  const { profiles } = useLauncherStore();
 
   useEffect(() => {
     playStartupSound();
   }, []);
 
-  const handleLanguageChange = (lang: Language) => {
-    if (state) {
-      updateState({ ...state, language: lang });
-    }
-  };
-
   const handleNext = () => setStep((s) => s + 1);
 
   return (
-    <div className="bg-background fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="bg-background/65 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <AnimatePresence mode="wait">
         {step === 0 && (
           <m.div
@@ -66,42 +59,6 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
               <p className="text-muted-foreground text-sm leading-relaxed">
                 {t("onboarding.description")}
               </p>
-            </div>
-
-            {/* Language Selection Card */}
-            <div className="border-border/50 bg-background/50 flex w-full flex-col gap-2.5 rounded-xl border p-3.5 shadow-sm">
-              <div className="text-muted-foreground flex items-center justify-center gap-1.5 text-xs font-medium">
-                <Globe className="text-primary h-3.5 w-3.5" />
-                <span>
-                  {state?.language === "RUSSIAN"
-                    ? "Выберите язык / Select language"
-                    : "Select language / Выберите язык"}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant={
-                    state?.language === "RUSSIAN" ? "default" : "outline"
-                  }
-                  className="h-9 cursor-pointer gap-2 text-xs font-medium transition-colors"
-                  onClick={() => handleLanguageChange("RUSSIAN")}
-                >
-                  <span className="text-sm">🇷🇺</span>
-                  <span>Русский</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant={
-                    state?.language === "ENGLISH" ? "default" : "outline"
-                  }
-                  className="h-9 cursor-pointer gap-2 text-xs font-medium transition-colors"
-                  onClick={() => handleLanguageChange("ENGLISH")}
-                >
-                  <span className="text-sm">🇬🇧</span>
-                  <span>English</span>
-                </Button>
-              </div>
             </div>
 
             <Button

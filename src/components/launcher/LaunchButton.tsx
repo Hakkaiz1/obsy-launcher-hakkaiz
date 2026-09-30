@@ -6,8 +6,6 @@ import { Play, Download } from "lucide-react";
 import { useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useLauncherStore } from "@/state";
-
-import { addonRegistry } from "@/lib/addons/registry";
 import { m, AnimatePresence } from "framer-motion";
 
 interface LaunchState {
@@ -138,26 +136,6 @@ export const LaunchButton = () => {
     dispatch({ type: "START_LAUNCH" });
 
     try {
-      const launchContext = {
-        profileId: state.selectedProfileId,
-        versionId: state.selectedVersionId,
-        jvmArguments: state.jvmArguments
-          ? state.jvmArguments.split(" ").filter(Boolean)
-          : [],
-        environment: {},
-      };
-
-      const allowed = await addonRegistry.runBeforeLaunchHooks(launchContext);
-      if (!allowed) {
-        dispatch({ type: "FINISHED" });
-        return;
-      }
-
-      addonRegistry.emit("game:launching", {
-        profileId: state.selectedProfileId,
-        versionId: state.selectedVersionId,
-      });
-
       await invoke("launch_game", {
         profileId: state.selectedProfileId,
         versionId: state.selectedVersionId,
@@ -165,7 +143,7 @@ export const LaunchButton = () => {
       useLauncherStore.getState().fetchVersions();
     } catch (error) {
       console.error(error);
-      alert(`Launch error: ${error}`);
+      alert(`Falha ao iniciar o jogo: ${error}`);
       dispatch({ type: "ERROR" });
     }
   };
@@ -184,7 +162,7 @@ export const LaunchButton = () => {
           className={`h-14 w-full text-lg font-bold uppercase shadow-md transition-colors duration-300 ${
             isRunning
               ? "cursor-not-allowed border border-emerald-500/30 bg-emerald-600/20 text-emerald-400 opacity-90"
-              : "hover:bg-primary/90 hover:shadow-xl"
+              : "bg-gradient-to-r from-amber-300 to-amber-500 text-violet-950 shadow-amber-500/20 hover:from-amber-200 hover:to-amber-400 hover:shadow-xl"
           }`}
           disabled={
             !state.selectedProfileId ||

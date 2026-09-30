@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:addons": "bun scripts/build-addons.ts",
     "capture:screenshots": "bun scripts/capture-screenshots.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

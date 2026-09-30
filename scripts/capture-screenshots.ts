@@ -109,39 +109,8 @@ class CDPClient {
 }
 
 async function preparePage(client: CDPClient) {
-  const catalog = JSON.parse(
-    fs.readFileSync(path.resolve(process.cwd(), "addons/catalog.json"), "utf8"),
-  );
-
   await client.send("Page.navigate", { url: "http://127.0.0.1:5173" });
   await sleep(1200);
-
-  await client.evaluate(`
-    const launcherStore = window.Obsy.useLauncherStore;
-    const addonStore = window.Obsy.useAddonStore;
-
-    const rawCatalog = ${JSON.stringify(catalog)};
-    if (addonStore) {
-      addonStore.setState({
-        catalog: rawCatalog,
-        installedAddons: {
-          "skin-3d-viewer": {
-            manifest: rawCatalog[0],
-            enabled: true,
-            installedAt: Date.now() - 86400000
-          },
-          "discord-rpc": {
-            manifest: rawCatalog[2],
-            enabled: true,
-            installedAt: Date.now() - 43200000
-          }
-        },
-        isInitialized: true,
-        isLoading: false
-      });
-    }
-  `);
-  await sleep(600);
 }
 
 async function main() {
@@ -215,7 +184,6 @@ async function main() {
             if (cmd === 'get_startup_time') return 142;
             if (cmd === 'get_app_memory_usage') return 38;
             if (cmd === 'get_wardrobe') return [];
-            if (cmd === 'get_installed_addons_from_disk') return [];
             return null;
           },
           transformCallback: (callback) => callback,
@@ -240,17 +208,7 @@ async function main() {
     await sleep(800);
     await client.captureScreenshot("obsy-settings.png");
 
-    // 3. Capture Addons Catalog
-    console.log("Capturing Addons Catalog...");
-    await preparePage(client);
-    await client.evaluate(`
-      const btn = document.querySelector('header button:has(svg.lucide-boxes)');
-      if (btn) btn.click();
-    `);
-    await sleep(800);
-    await client.captureScreenshot("obsy-addons.png");
-
-    // 4. Capture Console with clean realistic Minecraft logs
+    // 3. Capture Console with clean realistic Minecraft logs
     console.log("Capturing Console with logs...");
     await preparePage(client);
     await client.evaluate(`
@@ -265,7 +223,6 @@ async function main() {
       if (consoleContainer) {
         consoleContainer.innerHTML = \`
           <div class="mb-2"><span class="text-gray-500">[13:37:00]</span> <span class="text-blue-400">[Obsy:Core] Launcher initialized in 142 ms (RAM: 38 MB)</span></div>
-          <div class="mb-2"><span class="text-gray-500">[13:37:01]</span> <span class="text-blue-400">[Obsy:Addons] Active addons: 3D Skin Viewer v2.0.0, Discord RPC v1.1.0</span></div>
           <div class="mb-2"><span class="text-gray-500">[13:37:02]</span> <span class="text-gray-200">[Minecraft] Setting user: ObsyPlayer (UUID: c0ffee00-1337-4242-beef-000000000001)</span></div>
           <div class="mb-2"><span class="text-gray-500">[13:37:03]</span> <span class="text-gray-200">[FabricLoader/GameProvider] Loading 248 mods from instances/1.21.4-fabric/mods</span></div>
           <div class="mb-2"><span class="text-gray-500">[13:37:04]</span> <span class="text-blue-400">[Sodium] Backend: Metal (Apple M-Series) / Shader cache compiled in 310 ms</span></div>

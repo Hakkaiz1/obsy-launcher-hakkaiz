@@ -11,16 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLauncherStore } from "@/state";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Zap, Cpu, Clock } from "lucide-react";
+import { Settings, Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 
 export const SettingsDialog = () => {
-  const { state, updateState, fetchVersions, startupTimeMs, appMemoryMb } =
-    useLauncherStore();
+  const { state, updateState } = useLauncherStore();
   const { t } = useTranslation();
   const [appVersion, setAppVersion] = useState<string>("0.1.7");
   const [totalPlaytime, setTotalPlaytime] = useState<string | null>(null);
@@ -56,18 +54,18 @@ export const SettingsDialog = () => {
       >
         <Settings className="h-5 w-5" />
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent data-settings-dialog="true" className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{t("settings.title")}</DialogTitle>
         </DialogHeader>
-        <Tabs defaultValue="game" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="game">{t("settings.game")}</TabsTrigger>
-            <TabsTrigger value="window">{t("settings.window")}</TabsTrigger>
-            <TabsTrigger value="versions">{t("settings.versions")}</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="game" className="flex flex-col gap-4 py-4">
+        <div
+          data-settings-scroll
+          className="flex min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto py-1 pr-1"
+        >
+          <section className="border-border/50 bg-card/70 flex flex-col gap-3 rounded-lg border p-3">
+            <h3 className="text-primary/80 text-xs font-semibold tracking-wide uppercase">
+              {t("settings.game")}
+            </h3>
             <div className="flex items-center justify-between">
               <Label
                 htmlFor="auto-memory"
@@ -139,7 +137,7 @@ export const SettingsDialog = () => {
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label>{t("settings.javaPath") || "Java Path"}</Label>
+              <Label>{t("settings.javaPath") || "Caminho do Java"}</Label>
               <Input
                 value={state.javaPath || ""}
                 onChange={(e) =>
@@ -148,7 +146,7 @@ export const SettingsDialog = () => {
                     javaPath: e.target.value || null,
                   })
                 }
-                placeholder="/usr/bin/java (leave empty for default)"
+                placeholder="Caminho para o Java (deixe vazio para usar o padrão)"
               />
             </div>
 
@@ -167,11 +165,14 @@ export const SettingsDialog = () => {
                 }
               />
             </div>
-          </TabsContent>
+          </section>
 
-          <TabsContent value="window" className="flex flex-col gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
+          <section className="border-border/50 bg-card/70 flex flex-col gap-3 rounded-lg border p-3">
+            <h3 className="text-primary/80 text-xs font-semibold tracking-wide uppercase">
+              {t("settings.window")}
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
                 <Label>{t("settings.width")}</Label>
                 <Input
                   type="number"
@@ -184,7 +185,7 @@ export const SettingsDialog = () => {
                   }
                 />
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1.5">
                 <Label>{t("settings.height")}</Label>
                 <Input
                   type="number"
@@ -214,79 +215,16 @@ export const SettingsDialog = () => {
                 }
               />
             </div>
-          </TabsContent>
-
-          <TabsContent value="versions" className="flex flex-col gap-4 py-4">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="show-releases"
-                className="flex flex-col items-start gap-1"
-              >
-                <span>{t("settings.showReleases")}</span>
-              </Label>
-              <Switch
-                id="show-releases"
-                checked={state.releaseFilter}
-                onCheckedChange={(checked) => {
-                  updateState({ ...state, releaseFilter: checked });
-                  fetchVersions();
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="show-snapshots"
-                className="flex flex-col items-start gap-1"
-              >
-                <span>{t("settings.showSnapshots")}</span>
-              </Label>
-              <Switch
-                id="show-snapshots"
-                checked={state.snapshotFilter}
-                onCheckedChange={(checked) => {
-                  updateState({ ...state, snapshotFilter: checked });
-                  fetchVersions();
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="show-old"
-                className="flex flex-col items-start gap-1"
-              >
-                <span>{t("settings.showOld")}</span>
-              </Label>
-              <Switch
-                id="show-old"
-                checked={state.legacyFilter}
-                onCheckedChange={(checked) => {
-                  updateState({ ...state, legacyFilter: checked });
-                  fetchVersions();
-                }}
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
+          </section>
+        </div>
 
         <div className="border-border/40 text-muted-foreground flex items-center justify-between border-t pt-3 font-mono text-[11px]">
-          <span>Obsy Launcher v{appVersion}</span>
+          <span>DBC Super Launcher v{appVersion}</span>
           <div className="flex items-center gap-3">
             {totalPlaytime && (
               <span className="flex items-center gap-1 text-amber-400">
                 <Clock className="h-3 w-3" />
                 {t("playtime.title")}: {totalPlaytime}
-              </span>
-            )}
-            {startupTimeMs !== null && (
-              <span className="flex items-center gap-1 text-emerald-400">
-                <Zap className="h-3 w-3" />
-                {t("settings.startupTime", { ms: startupTimeMs })}
-              </span>
-            )}
-            {appMemoryMb !== null && (
-              <span className="flex items-center gap-1 text-sky-400">
-                <Cpu className="h-3 w-3" />
-                RAM: {appMemoryMb} MB
               </span>
             )}
           </div>

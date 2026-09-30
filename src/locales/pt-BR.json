@@ -1,0 +1,127 @@
+{
+  "translation": {
+    "app": {
+      "title": "DBC Super Launcher",
+      "skinNotFound": "Skin não encontrada"
+    },
+    "updater": {
+      "downloading": "Baixando atualização {{version}}...",
+      "downloadingProgress": "Baixando atualização {{version}}: {{progress}}%",
+      "downloaded": "Atualização baixada! Reiniciando...",
+      "restarting": "Reiniciando..."
+    },
+    "console": {
+      "title": "Registros do console",
+      "empty": "Nenhum registro capturado ainda..."
+    },
+    "profile": {
+      "selectProfile": "Selecionar perfil",
+      "selectAccount": "Selecionar conta",
+      "noProfiles": "Nenhum perfil adicionado",
+      "microsoft": "Licenciado",
+      "offline": "Offline",
+      "addOfflineProfile": "Adicionar perfil offline",
+      "addMicrosoftProfile": "Adicionar conta Microsoft",
+      "microsoftLoginInstructions": "Siga as instruções abaixo para entrar:",
+      "microsoftLoginCode": "Código:",
+      "microsoftLoginLink": "Abrir página de login",
+      "microsoftLoginWaiting": "Aguardando autenticação...",
+      "microsoftLoginError": "Falha na autenticação",
+      "username": "Nome de usuário",
+      "enterNickname": "Digite seu apelido",
+      "add": "Adicionar",
+      "addProfileTitle": "Adicionar perfil",
+      "deleteTooltip": "Excluir perfil"
+    },
+    "version": {
+      "selectVersion": "Selecionar versão",
+      "noVersions": "Nenhuma versão disponível",
+      "openFolder": "Abrir pasta da instância",
+      "deleteInstance": "Excluir instância",
+      "confirmDelete": "Tem certeza de que deseja excluir esta instância? Esta ação não pode ser desfeita.",
+      "delete": "Excluir",
+      "searchPlaceholder": "Buscar versões...",
+      "noVersionsFound": "Nenhuma versão encontrada",
+      "installed": "Instâncias instaladas",
+      "releases": "Versões oficiais",
+      "snapshots": "Snapshots e outras",
+      "createInstance": "Criar instância",
+      "createInstanceTitle": "Criar nova instância",
+      "createInstanceDesc": "Escolha a versão do Minecraft e o carregador de mods para jogar em uma instância isolada.",
+      "instanceName": "Nome da instância",
+      "instanceNamePlaceholder": "Ex.: Fabric 1.21.4",
+      "minecraftVersion": "Versão do Minecraft",
+      "loader": "Carregador de mods",
+      "loaderFabric": "Fabric (recomendado)",
+      "loaderNeoForge": "NeoForge (Forge moderno)",
+      "loaderForge": "Forge (clássico)",
+      "loaderQuilt": "Quilt",
+      "loaderVanilla": "Vanilla (jogo sem modificações)",
+      "create": "Criar"
+    },
+    "launch": {
+      "play": "Jogar",
+      "download": "Baixar",
+      "starting": "Preparando...",
+      "downloading_java": "Baixando Java...",
+      "extracting_java": "Extraindo Java...",
+      "downloading_libraries": "Baixando bibliotecas...",
+      "downloading_assets": "Baixando recursos...",
+      "checking_assets": "Verificando recursos...",
+      "checking_natives": "Verificando componentes nativos...",
+      "checking_libraries": "Verificando bibliotecas...",
+      "extracting_natives": "Extraindo componentes nativos...",
+      "installing_version": "Instalando versão...",
+      "installing_assets": "Instalando recursos...",
+      "installing_libraries": "Instalando bibliotecas...",
+      "launching": "Iniciando Minecraft...",
+      "success": "Concluído!",
+      "running": "O jogo está em execução"
+    },
+    "settings": {
+      "title": "Configurações",
+      "game": "Jogo",
+      "window": "Janela",
+      "memory": "Memória alocada (MB)",
+      "autoMemory": "Detectar memória automaticamente",
+      "jvmArgs": "Argumentos da JVM",
+      "applyAikar": "Aplicar argumentos do Aikar (G1GC)",
+      "aikarHint": "Os argumentos do Aikar otimizam a coleta de lixo e reduzem travamentos.",
+      "javaPath": "Caminho do Java",
+      "closeAfterLaunch": "Fechar launcher após iniciar",
+      "width": "Largura",
+      "height": "Altura",
+      "fullscreen": "Tela cheia",
+      "startupTime": "Inicialização: {{ms}} ms"
+    },
+    "onboarding": {
+      "welcome": "Bem-vindo ao DBC Super Launcher",
+      "description": "Curta Minecraft com animações suaves, desempenho nativo e uma interface bonita.",
+      "getStarted": "Começar",
+      "profilesTitle": "Configure sua conta",
+      "profilesDesc": "Adicione sua conta Microsoft ou jogue offline. Você pode gerenciar suas contas depois.",
+      "continue": "Continuar",
+      "readyTitle": "Tudo pronto para jogar!",
+      "readyDesc": "Está tudo configurado. Vamos começar.",
+      "finish": "Jogar"
+    },
+    "common": {
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "save": "Salvar",
+      "author": "Autor",
+      "version": "Versão"
+    },
+    "crash": {
+      "detected": "Problema ao iniciar o jogo",
+      "actionSuccess": "Ação aplicada: {{message}}",
+      "actionFailed": "Falha ao aplicar a ação",
+      "diagnostics": "Diagnóstico inteligente",
+      "quickFixes": "Soluções rápidas:"
+    },
+    "playtime": {
+      "title": "Tempo de jogo",
+      "total": "Tempo total de jogo: {{time}}"
+    }
+  }
+}

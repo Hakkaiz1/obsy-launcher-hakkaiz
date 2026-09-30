@@ -11,8 +11,6 @@ import { VersionSelector } from "./components/launcher/VersionSelector";
 import { Onboarding } from "./components/launcher/Onboarding";
 import "./i18n";
 import { useLauncherStore } from "./state";
-import { useAddonStore } from "./lib/addons/addonStore";
-import { PluginSlot } from "./components/addons/PluginSlot";
 import {
   AnimatePresence,
   LazyMotion,
@@ -81,9 +79,7 @@ const App = () => {
         console.error("Failed to check for updates", error);
       }
     };
-
     checkForAppUpdates();
-    useAddonStore.getState().initAddons();
     fetchStartupTime().then(() => {
       const ms = useLauncherStore.getState().startupTimeMs;
       if (ms) {
@@ -128,7 +124,7 @@ const App = () => {
 
   useEffect(() => {
     if (state?.language) {
-      i18n.changeLanguage(state.language === "RUSSIAN" ? "ru" : "en");
+      i18n.changeLanguage("pt-BR");
     }
   }, [state?.language, i18n]);
 
@@ -142,7 +138,7 @@ const App = () => {
   return (
     <LazyMotion features={domAnimation}>
       <MotionConfig reducedMotion="user">
-        <div className="bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden font-sans">
+        <div className="text-foreground flex h-screen w-screen flex-col overflow-hidden bg-transparent font-sans">
           {showOnboarding && (
             <Onboarding
               onComplete={() => {
@@ -153,7 +149,6 @@ const App = () => {
           )}
           <Header />
           <main className="relative z-10 flex flex-1 flex-col items-center justify-center p-4">
-            <PluginSlot name="dashboard.widgets" className="mb-3" />
             <AnimatePresence>
               {state && (
                 <m.div
@@ -179,9 +174,6 @@ const App = () => {
                       <LaunchButton />
                     </div>
                   </div>
-
-                  {/* Side Slot: Extensible for 3D Skin Viewer and custom side widgets */}
-                  <PluginSlot name="dashboard.side" />
                 </m.div>
               )}
             </AnimatePresence>

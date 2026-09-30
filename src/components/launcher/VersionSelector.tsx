@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence } from "framer-motion";
 import { ChevronsUpDown, Clock, Cloud, HardDrive } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { PluginSlot } from "@/components/addons/PluginSlot";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -220,7 +219,6 @@ export const VersionSelector = () => {
                   </CommandGroup>
                 )}
               </CommandList>
-              <PluginSlot name="version.footer" />
             </Command>
           </PopoverContent>
         </Popover>

@@ -5,13 +5,13 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Language {
-    English,
-    Russian,
+    #[serde(alias = "ENGLISH", alias = "RUSSIAN")]
+    Portuguese,
 }
 
 impl Default for Language {
     fn default() -> Self {
-        Language::English
+        Language::Portuguese
     }
 }
 
@@ -58,7 +58,7 @@ impl Default for LauncherState {
     fn default() -> Self {
         Self {
             scale: 1,
-            language: Language::English,
+            language: Language::Portuguese,
             theme: Theme::Light,
             memory_amount: 4096,
             auto_memory: true,
@@ -126,5 +126,26 @@ impl LauncherState {
         let contents = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         fs::write(path, contents).map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Language;
+
+    #[test]
+    fn language_defaults_to_portuguese_in_saved_state() {
+        let language = Language::default();
+
+        assert_eq!(serde_json::to_string(&language).unwrap(), "\"PORTUGUESE\"");
+    }
+
+    #[test]
+    fn legacy_language_values_load_as_portuguese() {
+        for legacy_value in ["\"ENGLISH\"", "\"RUSSIAN\""] {
+            let language: Language = serde_json::from_str(legacy_value).unwrap();
+
+            assert_eq!(language, Language::default());
+        }
     }
 }

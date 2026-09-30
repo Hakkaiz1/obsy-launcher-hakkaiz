@@ -118,7 +118,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Версия" />
+                  <SelectValue placeholder="Versão" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {availableMcVersions.map((ver) => (
