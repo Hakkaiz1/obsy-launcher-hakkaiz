@@ -1,10 +1,220 @@
-
 {
   "schemaVersion": 1,
-  "generatedAt": "1970-01-01T00:00:00.000Z",
+  "generatedAt": "2026-10-01T20:28:24.813Z",
   "updates": {
-    "cursor": "",
-    "messages": []
+    "cursor": "1514253120161714207",
+    "messages": [
+      {
+        "id": "1514253120161714207",
+        "content": "```\n* Atualização Dia 10/06/2026\n\n* Reparado sistema de aprimoramento do Tier Lendario:\n  \n  - estava constando um dano base menor que o verdadeiro!\n  - para atualizar o equipamento, basta selar e quebrar o selo!\n  - Print os custos e abra um ticket para ser reembolsado pelo ADM!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-06-10T13:01:17.309Z",
+        "attachments": []
+      },
+      {
+        "id": "1513182984440778812",
+        "content": "```\n* Atualização Dia 07/06/2026\n\n* Nerf no Dano dos Bosses de Tier Celestial em uma Media de 2x!\n\n* Reparado Nivel Amplificador e Perfeito:\n\n  - Não estava contabilizando os status adicional!\n\n* Reparado o Buff do Fragmento de Planeta +50%:\n\n  - Buff não estava sendo contabilizado no /PD!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-06-07T14:08:57.071Z",
+        "attachments": []
+      },
+      {
+        "id": "1512139244150194206",
+        "content": "```\n* Atualização Dia 04/06/2026\n\n* Ativado os reinicios automáticos do Servidor ( Fim do Timed Out ):\n\n  - 10:00\n  - 22:00\n\n* Adicionadas as Runas Lendarias de Estamina e Ki de forma individual no /itens!\n\n* Liberação do Nivel Amplificador Epico no /warp loja!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-06-04T17:01:29.994Z",
+        "attachments": []
+      },
+      {
+        "id": "1510800775834505461",
+        "content": "```\n* Atualização Dia 31/05/2026\n\n* Reparadas as Capsulas de Guerra:\n\n  - Estava informando um valor errado de lacre! ( Apenas bug visual )\n\n* Reparado Poder Absoluto de Guerra! ( Item não estava funcionando! )\n\n* Liberado Sistema de Forja:\n\n  - O sistema só se aplica ao Ultimo Equipamento de Cada Tier!\n\n  - O player deve destruir um equipamento similar para forjar o nivel do seu equipamento principal!\n\n  - Nivel 1: +9% Amplificação De Dano Final -> +3% Armadura\n\n  - Nivel 2: +15% Amplificação De Dano Final -> +5% Armadura\n\n  - Nivel 3: +21% Amplificação De Dano Final  -> +7% Armadura\n```",
+        "author": "Escanor",
+        "timestamp": "2026-06-01T00:22:54.280Z",
+        "attachments": []
+      },
+      {
+        "id": "1510303790547472517",
+        "content": "```\n* Atualização Dia 30/05/2026\n\n* Reparado o Ganho de PG da Guerra:\n\n  - Reparado Sistema de Detecção de Click!\n\n  - Esse sistema detecta se um jogador está ativo em combate em eventos:\n\n  - Ganho de PG da Guerra\n  - Detectação de Dano em Party\n  - Detectação de Dano em WorldBosses\n\n* Removida a Habilidade Ki Protection do /Habilidades!\n\n* Reparado o Spawn do WorldBoss de Nivel 1 ( KidBoo )!\n\n  - O sistema não estava spawnando automáticamente!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-05-30T15:28:03.754Z",
+        "attachments": []
+      },
+      {
+        "id": "1510083898149830836",
+        "content": "```\n* Atualização Dia 29/05/2026\n\n* Reparado Sistema de Guerra:\n\n  - A guerra não estava sendo iniciada!\n\n* Reparado o WorldBoss KidBoo:\n\n  - Sistema estava detectando como WorldBoss antigo e não estava dando o drop ao finalizar!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-05-30T00:54:17.321Z",
+        "attachments": []
+      },
+      {
+        "id": "1509854536959787149",
+        "content": "```\n* Atualização Dia 29/05/2026\n\n* Reparado rotas do evento farm!\n\n  - Estava com um farm pior do que a dungeon!\n\n* Adicionado guardas LVL 90!\n\n* Adicionado guardas LVL 300 na desperta!\n\n* Melhorias nas rotas gerais de guardas!\n\n* Reparado craft da forma especial!\n\n* Lançado os eventos principais! \n\n - Liberado Guerra;\n - Liberado Evento farm;\n - Liberado Mina recheada;\n - Liberado Planetarios da arena;\n```",
+        "author": "Thorfinn",
+        "timestamp": "2026-05-29T09:42:53.352Z",
+        "attachments": []
+      },
+      {
+        "id": "1509363146341486793",
+        "content": "```\n* Atualização Dia 27/05/2026\n\n* Reparado Evento Farm:\n\n  - Estava sendo detectado como um Planeta e expulsando os jogadores!\n\n* Regulagem no sistema de Dia e Hora:\n\n  - O servidor estava com o horário desconfigurado!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-05-28T01:10:16.699Z",
+        "attachments": []
+      },
+      {
+        "id": "1508854440285835334",
+        "content": "```\n* Atualização Dia 26/05/2026\n\n* Reparado o bug de 1/2 ao entrar na Dungeon Celestial PVP!\n\n* Reparado o bug do Vidro no slot de inventário ao abrir o painel de /formasprincipais!\n\n* Ativados os Fragmentos de Planetas!\n\n  - Aumento de Drop de +50% dentro do planeta raiz durante 20 minutos!\n\n* Liberados os Eventos!\n\n* Liberado o Sistema de Guerra!\n\n* Liberado o Sistema de WorldBosses! ( WorldBoss de Nivel 1 )\n```",
+        "author": "Escanor",
+        "timestamp": "2026-05-26T15:28:51.724Z",
+        "attachments": []
+      },
+      {
+        "id": "1508227161398448179",
+        "content": "```\n* Atualização Dia 24/05/2026\n\n* Reparada a Dominação do Planeta Celestial no /PD!\n\n* Reparado o buff de +50% Drop Geral dentro de um local PVP!```",
+        "author": "Escanor",
+        "timestamp": "2026-05-24T21:56:16.783Z",
+        "attachments": []
+      },
+      {
+        "id": "1505225014730031134",
+        "content": "```\n* Atualização Dia 16/05/2026\n\n* Reparada a Runa Lendaria de Impacto e ABS de Nivel 6:\n\n  - Apenas bug visual!\n  - Estava diminuindo o Ataque e Defesa base informado no /status!\n  - o PA e PD final estavam funcionando normalmente!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-05-16T15:06:49.240Z",
+        "attachments": []
+      },
+      {
+        "id": "1502702594454192188",
+        "content": "```\n* Atualização Dia 09/05/2026\n\n* Reparado Evento Castelo de Nivel 4:\n\n  - Estava dando 1/2 ao entrar na região!\n\n* Reparado Bug Visual do Treinamento Cosmico:\n\n  - Estava constando como Sacerdotal\n\n* Reativados os Obeliscos:\n  \n  - Não estavam sendo ativados desde ontem!\n  - Reparado de vez! Isso ocorria por conta da queda do servidor.\n\n* Liberados os Ultimos x4 Equipamentos de Tier Cosmico:\n\n  - Liberado o Drop dos devidos Artefatos com um Buff de 2x!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-05-09T16:03:37.382Z",
+        "attachments": []
+      },
+      {
+        "id": "1498507030648979457",
+        "content": "```\n* Atualização Dia 27/04/2026\n\n* Reparado sistema de Obeliscos:\n\n  - Obeliscos de Planetas não estavam sendo liberados!\n\n* Aumento no Ganho de XP de Clan geral em 2x!\n\n* Reparado o Treinamento Corrompido:\n\n  - Status estavam menores depois do level 10+\n\n  - Estava constando como Treinamento Hakaishin no /status!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-28T02:11:57.021Z",
+        "attachments": []
+      },
+      {
+        "id": "1497364464616603649",
+        "content": "```\n* Atualização Dia 24/04/2026\n\n* Nerf do dano final em pvp em 2x!\n\n* Buff no Drop de Nucleo Amplificador:\n\n  - Aumento no drop final em 2x!\n\n  - Aumento do level maximo do drop de 499 para 899!\n\n* Reparado o bug do Evento Matemática:\n\n  - Estava dando uma recompensa menor que a mostrada no chat!\n\n* Bloqueado o uso do /lojinhas em locais PVP!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-24T22:31:48.051Z",
+        "attachments": []
+      },
+      {
+        "id": "1496685713952079873",
+        "content": "```\n* Atualização Dia 22/04/2026\n\n* Liberado o WorldBoss de nivel 3!```",
+        "author": "Escanor",
+        "timestamp": "2026-04-23T01:34:41.282Z",
+        "attachments": []
+      },
+      {
+        "id": "1496229530942050494",
+        "content": "```\n* Atualização Dia 21/04/2026\n\n* Reparado o BUFF de Orbs ao Liberar o Planeta Corrompido:\n\n  - Aumento no drop de Orbs em 2x!\n\n* Reparado Sistema de Inflação dos Eventos:\n\n  - Matematica\n  - Loteria\n  - Bolão\n\n* Reparado o Drop de Fragmento do Planeta Glacial:\n\n  - Estava indo até o level 999 ao invez de 899!\n\n* Adicionado o Nucleo Amplificador ao /desbug!\n\n* Liberada a Caixa Sombria!\n\n* Liberadas as Missões Diarias de Nivel Extremo e Celestial!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-21T19:21:58.777Z",
+        "attachments": []
+      },
+      {
+        "id": "1495408945894785025",
+        "content": "```\n* Atualização Dia 19/04/2026\n\n* Buff nos Status de Treinamentos e Runas em 2x!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-19T13:01:16.056Z",
+        "attachments": []
+      },
+      {
+        "id": "1494831842879344642",
+        "content": "```\n* Atualização Dia 17/04/2026\n\n* Aumento no Drop de Essencia Arcana em 3x!\n\n* Aumento no Drop de Essencia Glacial em 2x!\n\n- ATUALIZAÇÃO NO SISTEMA DE OVER:\n\n    - AUMENTO DOS STATUS EM 2X! +1% POR NIVEL -> +2% POR NIVEL\n\n    - FUNCIONARÁ EM PVE!\n\n    - AO MUDAR DE TIER, OS STATUS DO TIER ANTERIOR FICARÁ LIGADO AO PERSONAGEM!\n\n    - DESSA FORMA, O AUMENTO AO ATIVAR O OVER, SERÁ APENAS DO TIER ATUAL!\n\n    - EX:\n\n        - AO PASSAR DO NIVEL 25, O SISTEMA VAI CONVERTER OS +40% (20 NIVEIS) PARA A BASE DO PERSONAGEM ( SEM PRECISAR ATIVAR O OVER PARA RESGATAR ISSO )\n\n        - AO ATIVAR O OVER, O SISTEMA VAI ADICIONAR OS 5 LEVEIS RESTANTES DO TIER ATUAL! ( +10% AMPLIFICAÇÃO FINAL )\n\n\n- REPARADO SISTEMA DE PVP:\n  \n   - SISTEMA ANTIGO:\n\n      - SE UM JOGADOR TIVESSE 2X MAIS STATUS / PA / PD -> O SISTEMA ESTAVA DANDO UMA VANTAGEM DE ATÉ 5X! \n      - ELE ESTAVA DOBRANDO OS STATUS E O PA/PD FINAL DO JOGADOR! ISSO DEIXAVA UM JOGADOR QUE É MAIS FORTE INVENCIVEL!\n\n  - AGORA O SISTEMA É DIRETAMENTE PROPORCIONAL! SE FOR 2X MAIS FORTE, A VANTAGEM SERÁ DE 2X!\n\n\n- SISTEMA DE REDUÇÃO DE PA E PD EM PVP A MEDIDA QUE ESCALA!\n\n    - DEIXAR O PVP MAIS JUSTO! SERÁ POSSIVEL 2 JOGADORES MAIS FRACOS MATAR UM MAIS FORTE! ( MAIOR MARGEM PARA ESTRATÉGIAS )\n\n        - SE UM JOGADOR FOR 2X MAIS FORTE QUE O OUTRO EM PVP, O SISTEMA REDUZIRÁ PARA 1.75X!\n\n        - SE UM JOGADOR FOR 4X MAIS FORTE QUE O OUTRO EM PVP, O SISTEMA REDUZIRÁ PARA 2.5X!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-17T22:48:03.975Z",
+        "attachments": []
+      },
+      {
+        "id": "1494171476323209288",
+        "content": "```\n* Atualização Dia 15/04/2026\n\n* Reparada a Dominação Diária Glacial no /PD:\n\n  - Não estava contando no drop base final!\n\n* Reparado o Upgrade do Over de Nivel 21+:\n\n  - Não estava reconhecendo a Essencia Glacial!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-16T03:04:00.319Z",
+        "attachments": []
+      },
+      {
+        "id": "1492549929921544212",
+        "content": "```\n* Atualização Dia 11/04/2026\n\n* Aumento no Drop dos Artefatos de Tier Glacial em 5x!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-11T15:40:33.530Z",
+        "attachments": []
+      },
+      {
+        "id": "1492007962175213590",
+        "content": "```\n* Atualização Dia 10/04/2026\n\n* Removido o requerimento de Nucleos do Sistema de /Over!\n\n* Adicionada novamente a confirmação ao tentar dropar Equipamentos!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-10T03:46:58.350Z",
+        "attachments": []
+      },
+      {
+        "id": "1491546648994779136",
+        "content": "```\n* Atualização Dia 08/04/2026\n\n* Buff no drop da Essencia Glacial em 2x!\n\n* Criação da Caixa Épica.\n\n* Liberação das Missões Diarias de Tier Glacial:\n\n  - Nivel 11 até 20\n  - Chave Epica!\n\n* Reparado o Buff de +100% da dominação diária do Planeta Glacial no /PD!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-08T21:13:52.717Z",
+        "attachments": []
+      },
+      {
+        "id": "1490917438466949130",
+        "content": "```\n* Atualização Dia 07/04/2026\n\n* Reparado Boosters de DBCoins e PG:\n\n  - Não estavam tendo o tempo subtraido!\n\n* Adicionado NPCs de Teleport das Dungeons do Planeta Glacial!\n\n* Reparado o Sistema de WorldBosses:\n\n  - Todos os jogadores estavam ganhando o buff minimo de 1x!\n  - Sistema de detectação de drop por dano reparado! Agora o sistema vai até 3x se você aplicar até 5% do dano total!\n\n* Liberado o WorldBoss do Planeta Glacial!\n\n* Reparado o Limite de Jogadores por Clan:\n\n  - O bug acontecia quando um lider do Clan enviava o pedido! Dessa forma ultrapassava a barreira do sistema!\n  - Pedimos para que se organizem e limitem seus clans em 5 jogadores!\n  - Caso não faça isso, O sistema expulsará um jogador aleatório...\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-07T03:33:37.237Z",
+        "attachments": []
+      },
+      {
+        "id": "1490549815220768869",
+        "content": "```\n* Atualização Dia 06/04/2026\n\n* Reparado o Castelo de Nivel 2:\n\n  - Estava kikando os Jogadores ao entrar!\n\n* Reparado o /PD do Planeta Glacial:\n\n  - Problemas com o Dominio: Não estava contando as mortes dos Inimigos!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-06T03:12:49.025Z",
+        "attachments": []
+      },
+      {
+        "id": "1489733582686785608",
+        "content": "```\n* Atualização Dia 03/04/2026\n\n* Nerf no Dano dos Bosses Level 180+```",
+        "author": "Escanor",
+        "timestamp": "2026-04-03T21:09:24.024Z",
+        "attachments": []
+      },
+      {
+        "id": "1489400768703500389",
+        "content": "```\n* Atualização Dia 02/04/2026\n\n* Regulagem no Sistema de PVP:\n\n  - Aumento na margem do Sistema Anti-KillAura! ( Isso diminuir ainda mais os golpes fantasmas )\n  - Aumento no Dano em PVP em +30%!\n\n* Reparados os Bosses da Arena:\n\n  - Não estavam sendo liberados!\n  - Chance de 50% a cada 30 Minutos!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-04-02T23:06:54.987Z",
+        "attachments": []
+      },
+      {
+        "id": "1488281514985918697",
+        "content": "```\n* Atualização Dia 30/03/2026\n\n* Sistema de Artefatos e PlanetaBosses:\n\n  - Diminuição do tempo de respawn dos PlanetaBosses para de 30 Minutos para 20 Minutos!\n  - Aumento na Chance de Respawn de 50% para 100%!\n  - Aumento no Drop de Artefatos em Geral em 5x!\n\n* Aumento no Drop de Esponjas das Sagas iniciais em 5x!\n\n* Aumento de Essencia Arcana nos Bosses Iniciais em até 2x!\n\n* Reparo no WorldBoss:\n  \n  - Remoção da Chance de vim o drop ao matar o WorldBoss, Ao invez disso o sistem buffa a quantia final para os jogadores que aplicaram um maior dano!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-03-30T20:59:24.106Z",
+        "attachments": []
+      },
+      {
+        "id": "1487449666823131146",
+        "content": "```\n* Atualização Dia 28/03/2026\n\n* Reparado o Teleport do Planeta PVE:\n\n  - Ao sair, não estava dando para entrar novamente, assim precisando relogar!\n\n* Removida LOGs Tester ao matar NPCs:\n\n  - Alguns Jogadores estavam recebendo logs de testes ao matar NPCs!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-03-28T13:53:56.049Z",
+        "attachments": []
+      },
+      {
+        "id": "1487120995507638474",
+        "content": "```\n* Atualização Dia 27/03/2026\n\n* Atualização do Sistema de Clans:\n\n  - Removido o Buff de DBCoins e PGs por level!\n\n  - Sistema de Level Simples! Todos os leveis possuirá o mesmo custo em XP para upar!\n\n  - Para obter XP? Cada NPC morto por cada membro do Clan ganhará XP!\n\n  - A Cada x5 leveis o Sistema recompensará todos do clan com x1 dia de um dos Boosters:\n\n    - Booster Extremo (+0.3x Drop Final)\n    - Booster PG (+0.5x Ganho de PG )\n    - Booster DBCoins (+0.5x Ganho de DBCoins ao Matar Inimigos )\n\n    * Lembrando que para receber essa recompensa, O membro deve ter pelo menos 12 Horas registradas dentro do Clan!\n\n  - Leveis infinitos, O Clan não possui mais limite de level!\n\n  - Liberação da Criação de Clan!\n\n  - Custo inicial de 6.55kk, Valor reajustado com a inflação a cada dia!\n\n  - Futuramente anunciaremos recompensas semanais para o TOP Clan mais upado do servidor!\n\n  - Futuramente anunciaremos eventos semanais entre clans!\n\n* Ajuste do Dano em PVP:\n\n  - Diminuição do Dano em PVP Diminuido em -60%!\n```",
+        "author": "Escanor",
+        "timestamp": "2026-03-27T16:07:54.701Z",
+        "attachments": []
+      },
+      {
+        "id": "1486734471108628741",
+        "content": "```\n* Atualização Dia 26/03/2026\n\n* Reparado problemas com Teleport ao finalizar o Planeta:\n\n  - Se o jogador se movesse dentro dos 3 segundos, ele não estava sendo teleportado!\n  - Agora o teleport será insta!\n\n* Reparada a Missão de Rompimento de Guerra de Nivel 2:\n\n  - Alterada para Level 100 até 480!\n\n* Reparada a Liberação dos Bosses da Arena:\n\n  - Estavam sendo liberados junto com os Obeliscos de Planeta!\n\n* Revisado e Reparado O Sistema de WorldBoss:\n\n  - Apenas o ultimo Atacante estava recebendo o Drop!\n  - Sistema de proporção de drop de acordo com o dano não estava funcionando! ( O drop deve ir de 1x até 5x de acordo com o dano total inferido )\n\n* Atualização nos Pacotes de Farm do /pacotes:\n\n  - Diminuição do Tempo de booster extremo de todos para x1 dia!\n  - Diminuição do Custo em 2x!\n\n* Reparado Respawn dos PlanetaBosses da Dungeon Vegeta: Estavam acima dos 20 Minutos...\n```",
+        "author": "Escanor",
+        "timestamp": "2026-03-26T14:32:00.103Z",
+        "attachments": []
+      }
+    ]
   },
   "patchNotes": {
     "cursor": "",
