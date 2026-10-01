@@ -953,8 +953,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle();
-            let mc_dir = minecraft::versions::get_minecraft_dir();
-            minecraft::migration::migrate_legacy_data_if_needed(&mc_dir, Some(handle));
+            let layout =
+                minecraft::versions::StorageLayout::current().map_err(std::io::Error::other)?;
+            let legacy_root =
+                minecraft::migration::current_legacy_root().map_err(std::io::Error::other)?;
+            minecraft::migration::migrate_legacy_data_if_needed(&layout, &legacy_root)
+                .map_err(std::io::Error::other)?;
 
             let initial_state = LauncherState::load(handle);
             let profile_store = ProfileStore::new(handle);
