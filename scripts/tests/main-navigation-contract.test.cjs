@@ -19,6 +19,10 @@ const header = fs.readFileSync(
   ),
   "utf8",
 );
+const globalCss = fs.readFileSync(
+  path.join(__dirname, "..", "..", "src", "index.css"),
+  "utf8",
+);
 const announcementsPanelPath = path.join(
   __dirname,
   "..",
@@ -37,18 +41,35 @@ test("main screen has Updates and Patch Notes navigation with launcher dock", ()
   assert.match(app, /Patch Notes/);
   assert.match(app, /setActiveSection/);
   assert.match(app, /w-\[56%\].*max-w-\[800px\]/);
-  assert.match(app, /absolute right-0 bottom-0/);
+  assert.match(app, /absolute right-10 bottom-10/);
   assert.match(
     app,
     /<header[^>]*justify-center[\s\S]*aria-label="Navegação principal"[\s\S]*justify-end/,
   );
+  assert.match(app, /<main className="absolute inset-0 z-10 flex gap-4 p-2">/);
+  assert.match(app, /<Header \/>/);
   assert.doesNotMatch(app, />\s*Novidades\s*</);
   assert.doesNotMatch(app, /<h1 className="text-xl font-semibold">/);
   assert.match(app, /<LaunchButton/);
 });
 
+test("active announcement tab buttons use the launcher gradient", () => {
+  assert.equal(
+    [...app.matchAll(/from-primary to-primary\/70 text-primary-foreground/g)]
+      .length,
+    2,
+  );
+  assert.doesNotMatch(app, /"bg-primary text-primary-foreground"/);
+});
+
 test("global header aligns Console, Settings, Site, and Discord on the right", () => {
   assert.match(header, /justify-end/);
+  assert.match(header, /data-tauri-drag-region/);
+  assert.doesNotMatch(header, /<header[^>]*backdrop-blur/);
+  assert.doesNotMatch(header, /<header[^>]*border-b/);
+  assert.match(header, /<header[^>]*absolute top-0 right-0 z-20/);
+  assert.doesNotMatch(header, /<header[^>]*w-full/);
+  assert.match(header, /<div[^>]*bg-card\/50[^>]*backdrop-blur-md/);
   assert.match(header, /<ConsoleDialog/);
   assert.match(header, /<SettingsDialog/);
   assert.match(header, /Site/);
@@ -79,4 +100,13 @@ test("announcement tabs load and render their corresponding public feed channel"
   assert.match(announcementsPanel, /message\.attachments\.map/);
   assert.doesNotMatch(announcementsPanel, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(announcementsPanel, /discord\.com\/api/);
+});
+
+test("global scrollbars use the launcher's thin purple theme", () => {
+  assert.match(
+    globalCss,
+    /\*\s*\{[^}]*scrollbar-color:\s*rgb\(147 51 234 \/ 55%\)\s+transparent/,
+  );
+  assert.match(globalCss, /\*\s*\{[^}]*scrollbar-width:\s*thin/);
+  assert.match(globalCss, /\*::-webkit-scrollbar-thumb:hover/);
 });

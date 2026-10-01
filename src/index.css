@@ -183,31 +183,32 @@ input[id*="hidden-input"],
   max-width: min(500px, calc(100vw - 2.5rem)) !important;
 }
 
-[data-settings-dialog] [data-settings-scroll] {
+* {
   scrollbar-color: rgb(147 51 234 / 55%) transparent;
   scrollbar-width: thin;
 }
 
-[data-settings-dialog] [data-settings-scroll]::-webkit-scrollbar {
+*::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
-[data-settings-dialog] [data-settings-scroll]::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-[data-settings-dialog] [data-settings-scroll]::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
   border-radius: 999px;
   background: rgb(147 51 234 / 55%);
   background-clip: content-box;
 }
 
-[data-settings-dialog] [data-settings-scroll]::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background: rgb(168 85 247 / 80%);
   background-clip: content-box;
 }
 
-[data-settings-dialog] [data-settings-scroll]::-webkit-scrollbar-button {
+*::-webkit-scrollbar-button {
   display: none;
 }

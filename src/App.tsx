@@ -131,9 +131,9 @@ const App = () => {
   return (
     <LazyMotion features={domAnimation}>
       <MotionConfig reducedMotion="user">
-        <div className="text-foreground flex h-screen w-screen flex-col overflow-hidden bg-transparent font-sans">
+        <div className="text-foreground relative flex h-screen w-screen flex-col overflow-hidden bg-transparent font-sans">
           <Header />
-          <main className="relative z-10 flex min-h-0 flex-1 gap-4 p-2">
+          <main className="absolute inset-0 z-10 flex gap-4 p-2">
             <AnimatePresence>
               {state && (
                 <m.div
@@ -157,7 +157,7 @@ const App = () => {
                             onClick={() => setActiveSection("updates")}
                             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                               activeSection === "updates"
-                                ? "bg-primary text-primary-foreground"
+                                ? "from-primary to-primary/70 text-primary-foreground shadow-primary/20 bg-gradient-to-r shadow-md"
                                 : "text-muted-foreground hover:text-foreground hover:bg-white/10"
                             }`}
                           >
@@ -174,7 +174,7 @@ const App = () => {
                             onClick={() => setActiveSection("patch-notes")}
                             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                               activeSection === "patch-notes"
-                                ? "bg-primary text-primary-foreground"
+                                ? "from-primary to-primary/70 text-primary-foreground shadow-primary/20 bg-gradient-to-r shadow-md"
                                 : "text-muted-foreground hover:text-foreground hover:bg-white/10"
                             }`}
                           >
@@ -198,7 +198,7 @@ const App = () => {
                     </section>
                   </div>
 
-                  <aside className="bg-card/90 border-border/50 absolute right-0 bottom-0 z-20 flex max-h-[calc(100%-1rem)] w-80 max-w-[calc(100vw-1rem)] flex-col gap-4 overflow-y-auto rounded-xl border p-4 shadow-2xl backdrop-blur-md">
+                  <aside className="bg-card/90 border-border/50 absolute right-10 bottom-10 z-20 flex max-h-[calc(100%-1rem)] w-80 max-w-[calc(100vw-1rem)] flex-col gap-4 overflow-y-auto rounded-xl border p-4 shadow-2xl backdrop-blur-md">
                     <div className="flex flex-col gap-4">
                       <ProfileSelector />
                       <TechnicPackStatus error={technicError} />

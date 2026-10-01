@@ -11,10 +11,10 @@ export const Header = () => {
   return (
     <header
       data-tauri-drag-region
-      className="border-border/50 bg-card/50 flex w-full cursor-default items-center justify-end border-b p-4 backdrop-blur-md select-none"
+      className="absolute top-0 right-0 z-20 flex cursor-default items-center justify-end p-4 select-none"
     >
       {state && (
-        <div className="flex items-center gap-2">
+        <div className="border-border/50 bg-card/50 flex items-center gap-2 rounded-xl border p-2 shadow-lg backdrop-blur-md">
           <ConsoleDialog />
           <SettingsDialog />
           <Button
