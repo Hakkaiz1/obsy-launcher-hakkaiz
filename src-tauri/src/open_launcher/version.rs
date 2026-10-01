@@ -61,6 +61,8 @@ fn should_skip_legacy_forge_installer(
 #[cfg(test)]
 mod tests {
     use super::should_skip_legacy_forge_installer;
+    use crate::open_launcher::{version::Version, Launcher};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn legacy_forge_uses_verified_preinstalled_profile_and_jar() {
@@ -69,6 +71,41 @@ mod tests {
         assert!(!should_skip_legacy_forge_installer(true, false, true, true));
         assert!(!should_skip_legacy_forge_installer(true, true, false, true));
         assert!(!should_skip_legacy_forge_installer(true, true, true, false));
+    }
+
+    #[tokio::test]
+    async fn install_version_returns_download_errors() {
+        let unique_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let game_dir = std::env::temp_dir().join(format!(
+            "obsy-install-version-test-{}-{unique_id}",
+            std::process::id()
+        ));
+        let mut launcher = Launcher::new(
+            game_dir.to_str().unwrap(),
+            "",
+            Version {
+                minecraft_version: "1.7.10".to_string(),
+                loader: None,
+                loader_version: None,
+            },
+        )
+        .await;
+        let version_json_path = game_dir.join("versions").join("1.7.10").join("1.7.10.json");
+        tokio::fs::create_dir_all(version_json_path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&version_json_path, b"{invalid json")
+            .await
+            .unwrap();
+
+        let result = launcher.install_version().await;
+
+        let cleanup_result = tokio::fs::remove_dir_all(&game_dir).await;
+        assert!(cleanup_result.is_ok(), "could not clean test directory");
+        assert!(result.is_err(), "download failure must be returned");
     }
 }
 
@@ -225,8 +262,8 @@ impl Launcher {
     pub async fn install_version(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
         fs::create_dir_all(self.game_dir.join("versions").join(&self.version.id)).await?;
 
-        let _ = self.download_version().await;
-        let _ = self.install_modded_versions().await;
+        self.download_version().await?;
+        self.install_modded_versions().await?;
 
         Ok(())
     }
