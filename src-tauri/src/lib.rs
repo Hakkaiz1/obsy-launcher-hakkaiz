@@ -292,12 +292,12 @@ async fn launch_game_inner(
     let mc_base_version = pack_manifest.minecraft_version.clone();
     let loader = Some("forge".to_string());
     let loader_version = Some(pack_manifest.forge_version.clone());
-    let runtime_dir = technic::managed_runtime_root();
+    let runtime_dir = technic::managed_runtime_root()?;
     let runtime_dir_str = runtime_dir
         .to_str()
         .ok_or("Invalid minecraft dir path")?
         .to_string();
-    let game_dir = technic::managed_game_root();
+    let game_dir = technic::managed_game_root()?;
     std::fs::create_dir_all(&game_dir)
         .map_err(|error| format!("Could not create DBC Super game directory: {error}"))?;
 

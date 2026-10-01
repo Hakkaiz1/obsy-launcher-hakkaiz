@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{Cursor, Read, Seek, Write},
     path::{Path, PathBuf},
     time::Duration,
@@ -65,6 +65,21 @@ pub struct InstalledPackManifest {
     pub managed_files: Vec<ManagedFile>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TechnicRoots {
+    pub game_root: PathBuf,
+    pub pack_root: PathBuf,
+}
+
+impl TechnicRoots {
+    fn staged(root: &Path) -> Self {
+        Self {
+            game_root: root.join("game"),
+            pack_root: root.to_path_buf(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateDecision {
     Install,
@@ -81,20 +96,33 @@ pub fn validate_launch_id(id: &str) -> Result<(), String> {
     }
 }
 
-pub fn managed_game_root() -> PathBuf {
-    managed_pack_root().join("game")
+pub fn managed_game_root() -> Result<PathBuf, String> {
+    Ok(crate::minecraft::versions::StorageLayout::current()?
+        .game_root()
+        .to_path_buf())
 }
 
-pub fn managed_runtime_root() -> PathBuf {
-    managed_pack_root().join("runtime")
+pub fn managed_pack_root() -> Result<PathBuf, String> {
+    Ok(crate::minecraft::versions::StorageLayout::current()?.technic_pack_root(TECHNIC_PACK_ID))
+}
+
+pub(crate) fn ensure_resourcepacks_directory(game_root: &Path) -> Result<PathBuf, String> {
+    let resourcepacks_dir = game_root.join("resourcepacks");
+    fs::create_dir_all(&resourcepacks_dir)
+        .map_err(|error| format!("Could not create Minecraft resource packs directory: {error}"))?;
+    Ok(resourcepacks_dir)
+}
+
+pub fn managed_runtime_root() -> Result<PathBuf, String> {
+    Ok(managed_pack_root()?.join("runtime"))
 }
 
 pub fn get_pack_status() -> Result<Option<InstalledPackManifest>, String> {
-    read_pack_status(&managed_pack_root())
+    read_pack_status(&managed_roots()?)
 }
 
-fn read_pack_status(root: &Path) -> Result<Option<InstalledPackManifest>, String> {
-    let root_metadata = match fs::symlink_metadata(root) {
+fn read_pack_status(roots: &TechnicRoots) -> Result<Option<InstalledPackManifest>, String> {
+    let root_metadata = match fs::symlink_metadata(&roots.pack_root) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
@@ -106,8 +134,19 @@ fn read_pack_status(root: &Path) -> Result<Option<InstalledPackManifest>, String
     if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
         return Err("Managed Technic path is not a safe directory".to_string());
     }
-
-    let manifest_path = root.join(MANIFEST_FILE);
+    let manifest_path = roots.pack_root.join(MANIFEST_FILE);
+    match fs::symlink_metadata(&manifest_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err("Installed Technic manifest is not a regular file".to_string())
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "Could not inspect installed Technic manifest: {error}"
+            ))
+        }
+    }
     let bytes = match fs::read(&manifest_path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -119,7 +158,7 @@ fn read_pack_status(root: &Path) -> Result<Option<InstalledPackManifest>, String
     };
     let manifest: InstalledPackManifest = serde_json::from_slice(&bytes)
         .map_err(|error| format!("Installed Technic manifest is invalid: {error}"))?;
-    validate_installed_manifest(root, &manifest)?;
+    validate_installed_manifest(roots, &manifest)?;
     Ok(Some(manifest))
 }
 
@@ -303,85 +342,345 @@ fn install_archive_transaction(
     pack_version: &str,
     previous: Option<&InstalledPackManifest>,
 ) -> Result<InstalledPackManifest, String> {
-    install_archive_reader_transaction(root, Cursor::new(archive), pack_version, previous)
+    let roots = test_roots(root);
+    install_archive_reader_transaction(&roots, Cursor::new(archive), pack_version, previous)
 }
 
 fn apply_staged_update(
-    root: &Path,
+    roots: &TechnicRoots,
     staged_root: &Path,
     manifest: &InstalledPackManifest,
+    previous: Option<&InstalledPackManifest>,
 ) -> Result<(), String> {
-    let parent = root
-        .parent()
-        .ok_or_else(|| "Managed Technic directory has no parent".to_string())?;
-    if staged_root.parent() != Some(parent) {
-        return Err("Technic staging directory must be on the managed pack volume".to_string());
+    if staged_root.parent() != Some(roots.pack_root.as_path()) || roots.game_root.parent().is_none()
+    {
+        return Err(
+            "Technic staging directory must be inside the managed pack directory".to_string(),
+        );
     }
+    ensure_safe_directory(&roots.game_root, "managed Minecraft directory")?;
+    ensure_safe_directory(&roots.pack_root, "managed Technic directory")?;
+    fs::create_dir_all(&roots.game_root)
+        .map_err(|error| format!("Could not create Minecraft game directory: {error}"))?;
+    fs::create_dir_all(&roots.pack_root)
+        .map_err(|error| format!("Could not create Technic pack directory: {error}"))?;
 
-    let backup = root.with_file_name(format!(".dbc-super-backup-{}", uuid::Uuid::new_v4()));
-    let had_previous = root.exists();
-    if had_previous {
-        fs::rename(root, &backup).map_err(|error| {
-            format!("Could not back up the existing DBC Super installation: {error}")
-        })?;
-    }
+    let backup = roots
+        .pack_root
+        .join(format!(".dbc-super-backup-{}", uuid::Uuid::new_v4()));
+    let backup_roots = TechnicRoots {
+        game_root: backup.join("game"),
+        pack_root: backup.join("pack"),
+    };
+    fs::create_dir(&backup)
+        .map_err(|error| format!("Could not create Technic update backup: {error}"))?;
+    fs::create_dir_all(&backup_roots.pack_root)
+        .map_err(|error| format!("Could not prepare Technic runtime backup: {error}"))?;
 
-    if let Err(error) = fs::rename(staged_root, root) {
-        if had_previous {
-            fs::rename(&backup, root).map_err(|restore_error| {
-                format!(
-                    "Could not activate the DBC Super update ({error}) or restore the previous installation ({restore_error})"
-                )
-            })?;
+    let mut game_operations: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
+    let mut runtime_backed_up = false;
+    let mut runtime_installed = false;
+    let mut manifest_backed_up = false;
+    let mut manifest_installed = false;
+
+    let update_result = (|| {
+        let new_paths: HashSet<String> = manifest
+            .managed_files
+            .iter()
+            .map(|file| file.path.to_lowercase())
+            .collect();
+        if let Some(previous) = previous {
+            for file in &previous.managed_files {
+                if !file.path.starts_with("game/") || new_paths.contains(&file.path.to_lowercase())
+                {
+                    continue;
+                }
+                let current = managed_path(roots, &file.path)?;
+                let metadata = match fs::symlink_metadata(&current) {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => {
+                        return Err(format!(
+                            "Could not inspect obsolete managed game file: {error}"
+                        ))
+                    }
+                };
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(format!(
+                        "Obsolete managed game path is not a regular file: {}",
+                        current.display()
+                    ));
+                }
+                if hash_file(&current)? == file.sha256 {
+                    backup_and_remove_game_file(
+                        roots,
+                        &backup_roots,
+                        &file.path,
+                        &mut game_operations,
+                    )?;
+                }
+            }
         }
-        return Err(format!("Could not activate the DBC Super update: {error}"));
-    }
 
-    let manifest_path = root.join(MANIFEST_FILE);
-    let write_result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&manifest_path)
-            .map_err(|error| format!("Could not create the installed pack manifest: {error}"))?;
-        let bytes = serde_json::to_vec_pretty(manifest)
-            .map_err(|error| format!("Could not serialize the installed pack manifest: {error}"))?;
-        file.write_all(&bytes)
-            .map_err(|error| format!("Could not persist the installed pack manifest: {error}"))?;
-        file.sync_all()
-            .map_err(|error| format!("Could not sync the installed pack manifest: {error}"))
+        for file in manifest
+            .managed_files
+            .iter()
+            .filter(|file| file.path.starts_with("game/"))
+        {
+            let source = managed_path(&TechnicRoots::staged(staged_root), &file.path)?;
+            let destination = managed_path(roots, &file.path)?;
+            let old_file = previous
+                .into_iter()
+                .flat_map(|manifest| manifest.managed_files.iter())
+                .find(|old_file| old_file.path.eq_ignore_ascii_case(&file.path))
+                .filter(|_| is_mutable_game_config(&file.path));
+            let preserve_mutable_config = if let Some(old_file) = old_file {
+                match fs::symlink_metadata(&destination) {
+                    Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                        return Err(format!(
+                            "Managed game path is not a regular file: {}",
+                            destination.display()
+                        ))
+                    }
+                    Ok(_) => hash_file(&destination)? != old_file.sha256,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                    Err(error) => {
+                        return Err(format!("Could not inspect mutable game config: {error}"))
+                    }
+                }
+            } else {
+                false
+            };
+            if preserve_mutable_config {
+                continue;
+            }
+            let backup_path = managed_path(&backup_roots, &file.path)?;
+            replace_managed_game_file(&source, &destination, &backup_path, &mut game_operations)?;
+        }
+
+        let runtime = roots.pack_root.join("runtime");
+        let staged_runtime = staged_root.join("runtime");
+        let backup_runtime = backup_roots.pack_root.join("runtime");
+        ensure_safe_directory(&runtime, "managed Technic runtime")?;
+        ensure_safe_directory(&staged_runtime, "staged Technic runtime")?;
+        if runtime.exists() {
+            fs::rename(&runtime, &backup_runtime)
+                .map_err(|error| format!("Could not back up Technic runtime: {error}"))?;
+            runtime_backed_up = true;
+        }
+        fs::rename(&staged_runtime, &runtime)
+            .map_err(|error| format!("Could not activate Technic runtime: {error}"))?;
+        runtime_installed = true;
+
+        let staged_manifest = staged_root.join(MANIFEST_FILE);
+        let staged_manifest_metadata = fs::symlink_metadata(&staged_manifest)
+            .map_err(|error| format!("Could not inspect staged Technic manifest: {error}"))?;
+        if staged_manifest_metadata.file_type().is_symlink() || !staged_manifest_metadata.is_file()
+        {
+            return Err("Staged Technic manifest is not a regular file".to_string());
+        }
+        let installed_manifest = roots.pack_root.join(MANIFEST_FILE);
+        let backup_manifest = backup_roots.pack_root.join(MANIFEST_FILE);
+        match fs::symlink_metadata(&installed_manifest) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err("Installed Technic manifest cannot be a symlink".to_string())
+            }
+            Ok(_) => {
+                fs::rename(&installed_manifest, &backup_manifest)
+                    .map_err(|error| format!("Could not back up Technic manifest: {error}"))?;
+                manifest_backed_up = true;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Could not inspect installed Technic manifest: {error}"
+                ))
+            }
+        }
+        fs::rename(&staged_manifest, &installed_manifest)
+            .map_err(|error| format!("Could not publish installed Technic manifest: {error}"))?;
+        manifest_installed = true;
+        Ok(())
     })();
 
-    if let Err(error) = write_result {
-        let cleanup_result = fs::remove_dir_all(root);
-        let restore_result = if had_previous {
-            fs::rename(&backup, root)
-        } else {
-            Ok(())
-        };
-        if let Err(rollback_error) = cleanup_result {
-            return Err(format!(
-                "{error}; failed to remove the incomplete installation during rollback: {rollback_error}"
-            ));
-        }
-        if let Err(rollback_error) = restore_result {
-            return Err(format!(
-                "{error}; failed to restore the previous installation: {rollback_error}"
-            ));
-        }
-        return Err(error);
+    if let Err(error) = update_result {
+        let rollback_result = rollback_update(
+            roots,
+            &backup_roots,
+            &game_operations,
+            runtime_backed_up,
+            runtime_installed,
+            manifest_backed_up,
+            manifest_installed,
+        );
+        return rollback_failed_update(&backup, &error, rollback_result);
     }
 
-    if had_previous {
-        fs::remove_dir_all(&backup).map_err(|error| {
-            format!("Installed DBC Super, but could not remove backup: {error}")
-        })?;
-    }
+    fs::remove_dir_all(&backup)
+        .map_err(|error| format!("Installed DBC Super, but could not remove backup: {error}"))?;
     Ok(())
 }
 
+fn ensure_safe_directory(path: &Path, label: &str) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            Err(format!("{label} is not a safe directory"))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Could not inspect {label}: {error}")),
+    }
+}
+
+fn replace_managed_game_file(
+    source: &Path,
+    destination: &Path,
+    backup: &Path,
+    operations: &mut Vec<(PathBuf, Option<PathBuf>)>,
+) -> Result<(), String> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create managed game directory: {error}"))?;
+    }
+    let backup_path = match fs::symlink_metadata(destination) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err(format!(
+                "Managed game path is not a regular file: {}",
+                destination.display()
+            ))
+        }
+        Ok(_) => {
+            if let Some(parent) = backup.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("Could not create game file backup: {error}"))?;
+            }
+            fs::rename(destination, backup)
+                .map_err(|error| format!("Could not back up managed game file: {error}"))?;
+            Some(backup.to_path_buf())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("Could not inspect managed game file: {error}")),
+    };
+    operations.push((destination.to_path_buf(), backup_path));
+    fs::rename(source, destination)
+        .map_err(|error| format!("Could not install managed game file: {error}"))
+}
+
+fn backup_and_remove_game_file(
+    roots: &TechnicRoots,
+    backup_roots: &TechnicRoots,
+    relative: &str,
+    operations: &mut Vec<(PathBuf, Option<PathBuf>)>,
+) -> Result<(), String> {
+    let current = managed_path(roots, relative)?;
+    let backup = managed_path(backup_roots, relative)?;
+    if let Some(parent) = backup.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create obsolete game file backup: {error}"))?;
+    }
+    fs::rename(&current, &backup)
+        .map_err(|error| format!("Could not remove obsolete managed game file: {error}"))?;
+    operations.push((current, Some(backup)));
+    Ok(())
+}
+
+fn rollback_update(
+    roots: &TechnicRoots,
+    backup_roots: &TechnicRoots,
+    game_operations: &[(PathBuf, Option<PathBuf>)],
+    runtime_backed_up: bool,
+    runtime_installed: bool,
+    manifest_backed_up: bool,
+    manifest_installed: bool,
+) -> Result<(), String> {
+    let mut failures = Vec::new();
+    let installed_manifest = roots.pack_root.join(MANIFEST_FILE);
+    let backup_manifest = backup_roots.pack_root.join(MANIFEST_FILE);
+    if manifest_installed {
+        if let Err(error) = fs::remove_file(&installed_manifest) {
+            failures.push(format!("could not remove new manifest: {error}"));
+        }
+    }
+    if manifest_backed_up {
+        if let Err(error) = fs::rename(&backup_manifest, &installed_manifest) {
+            failures.push(format!("could not restore manifest: {error}"));
+        }
+    }
+
+    let runtime = roots.pack_root.join("runtime");
+    let backup_runtime = backup_roots.pack_root.join("runtime");
+    if runtime_installed {
+        if let Err(error) = fs::remove_dir_all(&runtime) {
+            failures.push(format!("could not remove new runtime: {error}"));
+        }
+    }
+    if runtime_backed_up {
+        if let Err(error) = fs::rename(&backup_runtime, &runtime) {
+            failures.push(format!("could not restore runtime: {error}"));
+        }
+    }
+
+    for (destination, backup) in game_operations.iter().rev() {
+        match fs::symlink_metadata(destination) {
+            Ok(metadata) if metadata.is_dir() => {
+                failures.push(format!(
+                    "could not remove incomplete game file {}: destination is a directory",
+                    destination.display()
+                ));
+                continue;
+            }
+            Ok(_) => {
+                if let Err(error) = fs::remove_file(destination) {
+                    failures.push(format!("could not remove incomplete game file: {error}"));
+                    continue;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                failures.push(format!(
+                    "could not inspect game file during rollback: {error}"
+                ));
+                continue;
+            }
+        }
+        if let Some(backup) = backup {
+            if let Some(parent) = destination.parent() {
+                if let Err(error) = fs::create_dir_all(parent) {
+                    failures.push(format!("could not recreate game directory: {error}"));
+                    continue;
+                }
+            }
+            if let Err(error) = fs::rename(backup, destination) {
+                failures.push(format!("could not restore previous game file: {error}"));
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
+fn rollback_failed_update(
+    backup: &Path,
+    cause: &str,
+    rollback_result: Result<(), String>,
+) -> Result<(), String> {
+    if let Err(error) = rollback_result {
+        return Err(format!(
+            "{cause}; rollback was incomplete: {error}; recovery data retained at {}",
+            backup.display()
+        ));
+    }
+    fs::remove_dir_all(backup)
+        .map_err(|error| format!("{cause}; could not remove temporary rollback data: {error}"))?;
+    Err(cause.to_string())
+}
+
 fn install_archive_reader_transaction<R: Read + Seek>(
-    root: &Path,
+    roots: &TechnicRoots,
     reader: R,
     pack_version: &str,
     previous: Option<&InstalledPackManifest>,
@@ -389,43 +688,32 @@ fn install_archive_reader_transaction<R: Read + Seek>(
     if pack_version.trim().is_empty() {
         return Err("Technic build version is empty".to_string());
     }
-    let parent = root
-        .parent()
-        .ok_or_else(|| "Managed Technic directory has no parent".to_string())?;
-    match fs::symlink_metadata(root) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            return Err("Managed Technic directory cannot be a symlink".to_string())
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "Could not inspect managed Technic directory: {error}"
-            ))
-        }
-    }
-    fs::create_dir_all(parent)
+    ensure_safe_directory(&roots.pack_root, "managed Technic directory")?;
+    fs::create_dir_all(&roots.pack_root)
         .map_err(|error| format!("Could not create Technic installation directory: {error}"))?;
-    let staged_root = root.with_file_name(format!(".dbc-super-staging-{}", uuid::Uuid::new_v4()));
+    let staged_root = roots
+        .pack_root
+        .join(format!(".dbc-super-staging-{}", uuid::Uuid::new_v4()));
     fs::create_dir(&staged_root)
         .map_err(|error| format!("Could not create Technic staging directory: {error}"))?;
 
     let prepared = (|| {
         let mut managed_paths = extract_pack_archive(reader, &staged_root)?;
-        reconcile_previous_files(root, &staged_root, previous, &managed_paths)?;
+        reconcile_previous_files(roots, &staged_root, previous, &managed_paths)?;
         managed_paths.sort();
         managed_paths.dedup();
         let managed_files = managed_paths
             .into_iter()
             .map(|path| {
-                let full_path = managed_path(&staged_root, &path)?;
+                let full_path = managed_path(&TechnicRoots::staged(&staged_root), &path)?;
                 Ok(ManagedFile {
                     path,
                     sha256: hash_file(&full_path)?,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let forge_version = installed_forge_version(&staged_root, &managed_files)?;
+        let forge_version =
+            installed_forge_version(&TechnicRoots::staged(&staged_root), &managed_files)?;
 
         Ok(InstalledPackManifest {
             pack_id: TECHNIC_PACK_ID,
@@ -446,13 +734,36 @@ fn install_archive_reader_transaction<R: Read + Seek>(
         }
     };
 
-    if let Err(error) = apply_staged_update(root, &staged_root, &manifest) {
+    let manifest_path = staged_root.join(MANIFEST_FILE);
+    let manifest_write_result = (|| {
+        let manifest_bytes = serde_json::to_vec_pretty(&manifest)
+            .map_err(|error| format!("Could not serialize the installed pack manifest: {error}"))?;
+        let mut file = File::create(&manifest_path)
+            .map_err(|error| format!("Could not create the staged pack manifest: {error}"))?;
+        file.write_all(&manifest_bytes)
+            .map_err(|error| format!("Could not persist the staged pack manifest: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("Could not sync the staged pack manifest: {error}"))
+    })();
+    if let Err(error) = manifest_write_result {
+        fs::remove_dir_all(&staged_root).map_err(|cleanup_error| {
+            format!("{error}; could not remove staging directory: {cleanup_error}")
+        })?;
+        return Err(error);
+    }
+
+    if let Err(error) = apply_staged_update(roots, &staged_root, &manifest, previous) {
         if staged_root.exists() {
             fs::remove_dir_all(&staged_root).map_err(|cleanup_error| {
                 format!("{error}; could not remove staging directory: {cleanup_error}")
             })?;
         }
         return Err(error);
+    }
+    if staged_root.exists() {
+        fs::remove_dir_all(&staged_root).map_err(|error| {
+            format!("Installed DBC Super, but could not remove staging directory: {error}")
+        })?;
     }
 
     Ok(manifest)
@@ -545,8 +856,9 @@ fn extract_pack_archive<R: Read + Seek>(
         .map_err(|error| format!("Could not stage the verified Forge profile: {error}"))?;
     fs::write(&jar_path, forge_jar_bytes)
         .map_err(|error| format!("Could not stage the verified Forge JAR: {error}"))?;
-    managed_paths.push(relative_to_root(staged_root, &profile_path)?);
-    managed_paths.push(relative_to_root(staged_root, &jar_path)?);
+    let staged_roots = TechnicRoots::staged(staged_root);
+    managed_paths.push(relative_to_root(&staged_roots, &profile_path)?);
+    managed_paths.push(relative_to_root(&staged_roots, &jar_path)?);
 
     Ok(managed_paths)
 }
@@ -749,15 +1061,16 @@ fn is_personal_data_path(path: &str) -> bool {
     ) || matches!(path, "options.txt" | "servers.dat")
 }
 
+fn is_mutable_game_config(path: &str) -> bool {
+    path.starts_with("game/config/") || path == "game/splash.properties"
+}
+
 fn reconcile_previous_files(
-    previous_root: &Path,
+    previous_roots: &TechnicRoots,
     staged_root: &Path,
     previous_manifest: Option<&InstalledPackManifest>,
     new_managed_paths: &[String],
 ) -> Result<(), String> {
-    if !previous_root.exists() {
-        return Ok(());
-    }
     let previous_owned: HashMap<String, String> = previous_manifest
         .into_iter()
         .flat_map(|manifest| manifest.managed_files.iter())
@@ -767,51 +1080,107 @@ fn reconcile_previous_files(
         .iter()
         .map(|path| path.to_lowercase())
         .collect();
-    copy_preserved_files(
-        previous_root,
-        previous_root,
-        staged_root,
+    validate_game_targets(previous_roots, &previous_owned, &new_managed)?;
+    preserve_runtime_files(
+        &previous_roots.pack_root.join("runtime"),
+        &previous_roots.pack_root.join("runtime"),
+        &TechnicRoots::staged(staged_root),
         Path::new(""),
         &previous_owned,
         &new_managed,
     )
 }
 
-fn copy_preserved_files(
+fn validate_game_targets(
+    roots: &TechnicRoots,
+    previous_owned: &HashMap<String, String>,
+    new_managed: &HashSet<String>,
+) -> Result<(), String> {
+    for relative in new_managed
+        .iter()
+        .filter_map(|path| path.strip_prefix("game/"))
+    {
+        let managed = format!("game/{relative}");
+        let mut current = roots.game_root.clone();
+        let components = Path::new(relative)
+            .components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(part) => Some(part),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for (index, component) in components.iter().enumerate() {
+            current.push(component);
+            let metadata = match fs::symlink_metadata(&current) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(error) => {
+                    return Err(format!(
+                        "Could not inspect existing Minecraft path {}: {error}",
+                        current.display()
+                    ))
+                }
+            };
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "Cannot safely update because a managed game path is a symlink: {}",
+                    current.display()
+                ));
+            }
+            let is_leaf = index + 1 == components.len();
+            if !is_leaf && !metadata.is_dir() {
+                return Err(format!(
+                    "Existing player file conflicts with a Technic directory: {}",
+                    current.display()
+                ));
+            }
+            if is_leaf
+                && (!metadata.is_file() || !previous_owned.contains_key(&managed.to_lowercase()))
+            {
+                return Err(format!(
+                    "Cannot replace an existing untracked player file with a Technic-managed file: {managed}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn preserve_runtime_files(
     root: &Path,
     current: &Path,
-    staged_root: &Path,
+    staged_roots: &TechnicRoots,
     relative: &Path,
     previous_owned: &HashMap<String, String>,
     new_managed: &HashSet<String>,
 ) -> Result<(), String> {
+    if !current.exists() {
+        return Ok(());
+    }
     let entries = fs::read_dir(current)
-        .map_err(|error| format!("Could not inspect previous Technic files: {error}"))?;
+        .map_err(|error| format!("Could not inspect previous Technic runtime: {error}"))?;
     for entry in entries {
-        let entry =
-            entry.map_err(|error| format!("Could not inspect previous Technic file: {error}"))?;
-        let file_type = entry
-            .file_type()
-            .map_err(|error| format!("Could not inspect previous Technic file type: {error}"))?;
+        let entry = entry
+            .map_err(|error| format!("Could not inspect previous Technic runtime file: {error}"))?;
+        let file_type = entry.file_type().map_err(|error| {
+            format!("Could not inspect previous Technic runtime file type: {error}")
+        })?;
         if file_type.is_symlink() {
             return Err(format!(
-                "Cannot safely update because a managed game path is a symlink: {}",
+                "Cannot safely update because a Technic runtime path is a symlink: {}",
                 entry.path().display()
             ));
         }
         let name = entry
             .file_name()
             .into_string()
-            .map_err(|_| "Previous Technic installation contains a non-UTF-8 path".to_string())?;
-        if relative.as_os_str().is_empty() && name == MANIFEST_FILE {
-            continue;
-        }
+            .map_err(|_| "Previous Technic runtime contains a non-UTF-8 path".to_string())?;
         let child_relative = relative.join(name);
         if file_type.is_dir() {
-            copy_preserved_files(
+            preserve_runtime_files(
                 root,
                 &entry.path(),
-                staged_root,
+                staged_roots,
                 &child_relative,
                 previous_owned,
                 new_managed,
@@ -820,41 +1189,41 @@ fn copy_preserved_files(
         }
         if !file_type.is_file() {
             return Err(format!(
-                "Cannot safely update unsupported filesystem entry: {}",
+                "Cannot safely update unsupported Technic runtime entry: {}",
                 entry.path().display()
             ));
         }
-
-        let relative_string = path_to_slashes(&child_relative)?;
+        let relative_string = format!("runtime/{}", path_to_slashes(&child_relative)?);
         let normalized_path = relative_string.to_lowercase();
-        let source = root.join(&child_relative);
-        let target = managed_path(staged_root, &relative_string)?;
-        let is_personal = relative_string.starts_with("game/")
-            && is_personal_data_path(relative_string.trim_start_matches("game/"));
-        if !is_personal {
-            if new_managed.contains(&normalized_path) {
-                continue;
+        if new_managed.contains(&normalized_path) {
+            if !previous_owned.contains_key(&normalized_path) {
+                return Err(format!(
+                    "Cannot replace an existing untracked Technic runtime file: {relative_string}"
+                ));
             }
-            if let Some(expected_hash) = previous_owned.get(&normalized_path) {
-                if hash_file(&source)? == *expected_hash {
-                    continue;
-                }
+            continue;
+        }
+        if let Some(expected_hash) = previous_owned.get(&normalized_path) {
+            if hash_file(&root.join(&child_relative))? == *expected_hash {
+                continue;
             }
         }
 
-        if target.exists() && !is_personal {
+        let source = root.join(&child_relative);
+        let target = managed_path(staged_roots, &relative_string)?;
+        if target.exists() {
             return Err(format!(
-                "Cannot preserve existing player file because the new Technic archive uses the same path: {}",
+                "Cannot preserve existing Technic runtime file because the new archive uses the same path: {}",
                 target.display()
             ));
         }
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)
-                .map_err(|error| format!("Could not preserve player data: {error}"))?;
+                .map_err(|error| format!("Could not preserve Technic runtime data: {error}"))?;
         }
         fs::copy(&source, &target).map_err(|error| {
             format!(
-                "Could not preserve existing player file {}: {error}",
+                "Could not preserve Technic runtime file {}: {error}",
                 source.display()
             )
         })?;
@@ -875,7 +1244,7 @@ fn path_to_slashes(path: &Path) -> Result<String, String> {
         .map(|parts| parts.join("/"))
 }
 
-fn managed_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
+fn managed_path(roots: &TechnicRoots, relative: &str) -> Result<PathBuf, String> {
     if relative.contains('\\')
         || relative.contains(':')
         || relative.contains('\0')
@@ -886,13 +1255,29 @@ fn managed_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     {
         return Err(format!("Unsafe managed Technic path: {relative}"));
     }
-    crate::fs_utils::safe_zip_extract_path(root, relative)
+    let (storage_root, path): (&Path, String) = if let Some(path) = relative.strip_prefix("game/") {
+        (&roots.game_root, path.to_string())
+    } else if let Some(path) = relative.strip_prefix("runtime/") {
+        (&roots.pack_root, format!("runtime/{path}"))
+    } else {
+        return Err(format!(
+            "Managed Technic path has an unknown root: {relative}"
+        ));
+    };
+    if path.is_empty() {
+        return Err(format!("Managed Technic path is empty: {relative}"));
+    }
+    crate::fs_utils::safe_zip_extract_path(storage_root, &path)
 }
 
-fn relative_to_root(root: &Path, path: &Path) -> Result<String, String> {
-    path.strip_prefix(root)
-        .map_err(|_| "Managed Technic file is outside the installation root".to_string())
-        .and_then(path_to_slashes)
+fn relative_to_root(roots: &TechnicRoots, path: &Path) -> Result<String, String> {
+    if let Ok(path) = path.strip_prefix(&roots.game_root) {
+        return path_to_slashes(path).map(|path| format!("game/{path}"));
+    }
+    if let Ok(path) = path.strip_prefix(&roots.pack_root.join("runtime")) {
+        return path_to_slashes(path).map(|path| format!("runtime/{path}"));
+    }
+    Err("Managed Technic file is outside the installation roots".to_string())
 }
 
 fn hash_file(path: &Path) -> Result<String, String> {
@@ -912,14 +1297,17 @@ fn hash_file(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn installed_forge_version(root: &Path, managed_files: &[ManagedFile]) -> Result<String, String> {
+fn installed_forge_version(
+    roots: &TechnicRoots,
+    managed_files: &[ManagedFile],
+) -> Result<String, String> {
     let profile = managed_files
         .iter()
         .find(|file| {
             file.path.starts_with("runtime/versions/forge-") && file.path.ends_with(".json")
         })
         .ok_or_else(|| "Installed Technic pack is missing its Forge profile".to_string())?;
-    let path = managed_path(root, &profile.path)?;
+    let path = managed_path(roots, &profile.path)?;
     let value: Value = serde_json::from_slice(
         &fs::read(path)
             .map_err(|error| format!("Could not verify installed Forge profile: {error}"))?,
@@ -929,10 +1317,11 @@ fn installed_forge_version(root: &Path, managed_files: &[ManagedFile]) -> Result
 }
 
 fn validate_installed_manifest(
-    root: &Path,
+    roots: &TechnicRoots,
     manifest: &InstalledPackManifest,
 ) -> Result<(), String> {
-    let root_metadata = fs::symlink_metadata(root)
+    ensure_safe_directory(&roots.game_root, "managed Minecraft directory")?;
+    let root_metadata = fs::symlink_metadata(&roots.pack_root)
         .map_err(|error| format!("Could not inspect installed Technic directory: {error}"))?;
     if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
         return Err("Installed Technic path is not a safe directory".to_string());
@@ -965,7 +1354,7 @@ fn validate_installed_manifest(
         {
             return Err("Installed Technic manifest contains an invalid SHA-256 hash".to_string());
         }
-        let path = managed_path(root, &managed_file.path)?;
+        let path = managed_path(roots, &managed_file.path)?;
         let metadata = fs::symlink_metadata(&path).map_err(|error| {
             format!(
                 "Installed Technic file is missing: {}: {error}",
@@ -978,7 +1367,7 @@ fn validate_installed_manifest(
                 path.display()
             ));
         }
-        if hash_file(&path)? != managed_file.sha256 {
+        if !is_mutable_game_config(&managed_file.path) && hash_file(&path)? != managed_file.sha256 {
             return Err(format!(
                 "Installed Technic file failed hash validation: {}",
                 path.display()
@@ -986,7 +1375,7 @@ fn validate_installed_manifest(
         }
     }
 
-    let forge_version = installed_forge_version(root, &manifest.managed_files)?;
+    let forge_version = installed_forge_version(roots, &manifest.managed_files)?;
     if forge_version != manifest.forge_version {
         return Err("Installed Technic Forge version does not match its manifest".to_string());
     }
@@ -1006,8 +1395,20 @@ fn validate_installed_manifest(
     Ok(())
 }
 
-fn load_valid_installed_manifest(root: &Path) -> Option<InstalledPackManifest> {
-    let manifest_path = root.join(MANIFEST_FILE);
+fn load_valid_installed_manifest(roots: &TechnicRoots) -> Option<InstalledPackManifest> {
+    let manifest_path = roots.pack_root.join(MANIFEST_FILE);
+    match fs::symlink_metadata(&manifest_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            eprintln!("[TECHNIC] Ignoring unsafe installed pack manifest");
+            return None;
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            eprintln!("[TECHNIC] Could not inspect installed pack manifest: {error}");
+            return None;
+        }
+    }
     let bytes = match fs::read(&manifest_path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
@@ -1026,17 +1427,27 @@ fn load_valid_installed_manifest(root: &Path) -> Option<InstalledPackManifest> {
             return None;
         }
     };
-    if let Err(error) = validate_installed_manifest(root, &manifest) {
+    if let Err(error) = validate_installed_manifest(roots, &manifest) {
         eprintln!("[TECHNIC] Ignoring invalid installed pack: {error}");
         return None;
     }
     Some(manifest)
 }
 
-fn managed_pack_root() -> PathBuf {
-    crate::minecraft::versions::get_minecraft_dir()
-        .join("technic")
-        .join(TECHNIC_PACK_ID.to_string())
+fn managed_roots() -> Result<TechnicRoots, String> {
+    let layout = crate::minecraft::versions::StorageLayout::current()?;
+    Ok(TechnicRoots {
+        game_root: layout.game_root().to_path_buf(),
+        pack_root: layout.technic_pack_root(TECHNIC_PACK_ID),
+    })
+}
+
+#[cfg(test)]
+fn test_roots(root: &Path) -> TechnicRoots {
+    TechnicRoots {
+        game_root: root.join("game"),
+        pack_root: root.to_path_buf(),
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -1064,8 +1475,8 @@ fn emit_progress(
 }
 
 pub async fn ensure_pack_current(app: &AppHandle) -> Result<InstalledPackManifest, String> {
-    let root = managed_pack_root();
-    let current = load_valid_installed_manifest(&root);
+    let roots = managed_roots()?;
+    let current = load_valid_installed_manifest(&roots);
     emit_progress(app, "checking_technic", 0.0, None)?;
 
     let metadata = match fetch_latest_metadata().await {
@@ -1113,16 +1524,16 @@ pub async fn ensure_pack_current(app: &AppHandle) -> Result<InstalledPackManifes
         0.05,
         Some(format!("Versão {}", metadata.version)),
     )?;
-    let archive_path = download_archive(app, &metadata.url, &root).await?;
+    let archive_path = download_archive(app, &metadata.url, &roots.pack_root).await?;
     emit_progress(app, "applying_technic", 0.55, None)?;
-    let root_for_install = root.clone();
+    let roots_for_install = roots.clone();
     let archive_for_install = archive_path.clone();
     let version = metadata.version.clone();
     let previous = current.clone();
     let install_result = tokio::task::spawn_blocking(move || {
         let archive = File::open(&archive_for_install)
             .map_err(|error| format!("Could not open downloaded Technic archive: {error}"))?;
-        install_archive_reader_transaction(&root_for_install, archive, &version, previous.as_ref())
+        install_archive_reader_transaction(&roots_for_install, archive, &version, previous.as_ref())
     })
     .await
     .map_err(|error| format!("Technic installation task failed: {error}"))
@@ -1152,10 +1563,7 @@ pub async fn ensure_pack_current(app: &AppHandle) -> Result<InstalledPackManifes
 }
 
 async fn download_archive(app: &AppHandle, url: &Url, root: &Path) -> Result<PathBuf, String> {
-    let parent = root
-        .parent()
-        .ok_or_else(|| "Managed Technic directory has no parent".to_string())?;
-    tokio::fs::create_dir_all(parent)
+    tokio::fs::create_dir_all(root)
         .await
         .map_err(|error| format!("Could not create Technic download directory: {error}"))?;
     let client = crate::open_launcher::utils::get_http_client();
@@ -1185,7 +1593,7 @@ async fn download_archive(app: &AppHandle, url: &Url, root: &Path) -> Result<Pat
         return Err("Technic archive exceeds the 1 GiB download limit".to_string());
     }
 
-    let archive_path = parent.join(format!(".dbc-super-download-{}.zip", uuid::Uuid::new_v4()));
+    let archive_path = root.join(format!(".dbc-super-download-{}.zip", uuid::Uuid::new_v4()));
     let mut file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1281,9 +1689,11 @@ fn validate_archive_url(url: &Url) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decide_update, install_archive_transaction, parse_latest_metadata, InstalledPackManifest,
-        ManagedFile, TechnicPackMetadata, UpdateDecision, TECHNIC_MINECRAFT_VERSION,
-        TECHNIC_PACK_ID,
+        apply_staged_update, decide_update, ensure_resourcepacks_directory,
+        install_archive_reader_transaction, install_archive_transaction,
+        load_valid_installed_manifest, managed_path, parse_latest_metadata, test_roots,
+        InstalledPackManifest, ManagedFile, TechnicPackMetadata, TechnicRoots, UpdateDecision,
+        TECHNIC_MINECRAFT_VERSION, TECHNIC_PACK_ID,
     };
     use reqwest::Url;
     use sha2::{Digest, Sha256};
@@ -1539,6 +1949,278 @@ mod tests {
         assert_eq!(forge_profile["id"], "1.7.10-Forge10.13.4.1558-1.7.10");
     }
 
+    fn separated_roots(root: &Path) -> TechnicRoots {
+        let game_root = root.join("DBC Super Launcher");
+        let pack_root = game_root
+            .join("launcher")
+            .join("technic")
+            .join(TECHNIC_PACK_ID.to_string());
+        TechnicRoots {
+            game_root,
+            pack_root,
+        }
+    }
+
+    #[test]
+    fn managed_root_helpers_use_the_storage_layout() {
+        let layout = crate::minecraft::versions::StorageLayout::current().unwrap();
+
+        assert_eq!(
+            super::managed_game_root().unwrap(),
+            layout.game_root().to_path_buf()
+        );
+        assert_eq!(
+            super::managed_pack_root().unwrap(),
+            layout.technic_pack_root(TECHNIC_PACK_ID)
+        );
+    }
+
+    #[test]
+    fn technic_install_separates_game_files_from_launcher_metadata() {
+        let temp = TempDir::new();
+        let roots = separated_roots(temp.path());
+        let archive = pack_archive(&[("mods/example.jar", b"mod bytes")]);
+
+        let manifest =
+            install_archive_reader_transaction(&roots, Cursor::new(archive), "10.8", None).unwrap();
+
+        assert_eq!(
+            fs::read(roots.game_root.join("mods/example.jar")).unwrap(),
+            b"mod bytes"
+        );
+        assert!(!roots.game_root.join("game").exists());
+        assert!(roots.pack_root.join("manifest.json").is_file());
+        assert!(roots
+            .pack_root
+            .join("runtime/versions/forge-1.7.10-10.13.4.1558")
+            .is_dir());
+        assert!(manifest
+            .managed_files
+            .iter()
+            .any(|file| file.path == "game/mods/example.jar"));
+        assert!(manifest
+            .managed_files
+            .iter()
+            .any(|file| file.path.starts_with("runtime/versions/forge-")));
+    }
+
+    #[test]
+    fn technic_updates_preserve_player_files_and_only_remove_unchanged_obsolete_files() {
+        let temp = TempDir::new();
+        let roots = separated_roots(temp.path());
+        let first = pack_archive(&[
+            ("mods/obsolete.jar", b"obsolete"),
+            ("mods/edited.jar", b"original"),
+            ("mods/current.jar", b"old version"),
+            ("config/default.cfg", b"default"),
+        ]);
+        let previous =
+            install_archive_reader_transaction(&roots, Cursor::new(first), "10.8", None).unwrap();
+        fs::write(roots.game_root.join("mods/edited.jar"), b"player edit").unwrap();
+        fs::write(roots.game_root.join("config/default.cfg"), b"player config").unwrap();
+        fs::create_dir_all(roots.game_root.join("saves/world")).unwrap();
+        fs::write(roots.game_root.join("saves/world/level.dat"), b"world").unwrap();
+        fs::create_dir_all(roots.game_root.join("resourcepacks/custom")).unwrap();
+        fs::write(
+            roots.game_root.join("resourcepacks/custom/pack.txt"),
+            b"resource pack",
+        )
+        .unwrap();
+
+        let next = pack_archive(&[
+            ("mods/current.jar", b"new version"),
+            ("mods/new.jar", b"new mod"),
+            ("config/default.cfg", b"new default"),
+        ]);
+        install_archive_reader_transaction(&roots, Cursor::new(next), "10.9", Some(&previous))
+            .unwrap();
+
+        assert_eq!(
+            fs::read(roots.game_root.join("mods/edited.jar")).unwrap(),
+            b"player edit"
+        );
+        assert!(!roots.game_root.join("mods/obsolete.jar").exists());
+        assert_eq!(
+            fs::read(roots.game_root.join("mods/current.jar")).unwrap(),
+            b"new version"
+        );
+        assert_eq!(
+            fs::read(roots.game_root.join("config/default.cfg")).unwrap(),
+            b"player config"
+        );
+        assert_eq!(
+            fs::read(roots.game_root.join("saves/world/level.dat")).unwrap(),
+            b"world"
+        );
+        assert_eq!(
+            fs::read(roots.game_root.join("resourcepacks/custom/pack.txt")).unwrap(),
+            b"resource pack"
+        );
+    }
+
+    #[test]
+    fn failed_technic_activation_restores_game_runtime_and_manifest_roots() {
+        let temp = TempDir::new();
+        let roots = separated_roots(temp.path());
+        let current = pack_archive(&[("mods/current.jar", b"old mod")]);
+        install_archive_reader_transaction(&roots, Cursor::new(current), "10.8", None).unwrap();
+        let old_manifest = fs::read(roots.pack_root.join("manifest.json")).unwrap();
+        let old_runtime = fs::read_dir(roots.pack_root.join("runtime/versions"))
+            .unwrap()
+            .count();
+        let staged_root = roots.pack_root.join(".staged");
+        fs::create_dir_all(staged_root.join("game/mods")).unwrap();
+        fs::create_dir_all(staged_root.join("runtime/versions")).unwrap();
+        fs::write(staged_root.join("game/mods/current.jar"), b"new mod").unwrap();
+        fs::write(
+            staged_root.join("runtime/versions/new-profile.jar"),
+            b"runtime",
+        )
+        .unwrap();
+        fs::create_dir(staged_root.join("manifest.json")).unwrap();
+        let next_manifest = InstalledPackManifest {
+            pack_id: TECHNIC_PACK_ID,
+            pack_version: "10.9".to_string(),
+            minecraft_version: TECHNIC_MINECRAFT_VERSION.to_string(),
+            forge_version: "10.13.4.1558".to_string(),
+            managed_files: vec![
+                ManagedFile {
+                    path: "game/mods/current.jar".to_string(),
+                    sha256: format!("{:x}", Sha256::digest(b"new mod")),
+                },
+                ManagedFile {
+                    path: "runtime/versions/new-profile.jar".to_string(),
+                    sha256: format!("{:x}", Sha256::digest(b"runtime")),
+                },
+            ],
+        };
+
+        assert!(apply_staged_update(&roots, &staged_root, &next_manifest, None).is_err());
+
+        assert_eq!(
+            fs::read(roots.game_root.join("mods/current.jar")).unwrap(),
+            b"old mod"
+        );
+        assert_eq!(
+            fs::read(roots.pack_root.join("manifest.json")).unwrap(),
+            old_manifest
+        );
+        assert_eq!(
+            fs::read_dir(roots.pack_root.join("runtime/versions"))
+                .unwrap()
+                .count(),
+            old_runtime
+        );
+    }
+
+    #[test]
+    fn failed_rollback_retains_recovery_backup() {
+        let temp = TempDir::new();
+        let roots = separated_roots(temp.path());
+        let backup = roots.pack_root.join(".dbc-super-backup-test");
+        let backup_roots = TechnicRoots {
+            game_root: backup.join("game"),
+            pack_root: backup.join("pack"),
+        };
+        let destination = roots.game_root.join("mods/current.jar");
+        let old_file = backup_roots.game_root.join("mods/current.jar");
+        fs::create_dir_all(&destination).unwrap();
+        fs::create_dir_all(old_file.parent().unwrap()).unwrap();
+        fs::write(&old_file, b"previous mod").unwrap();
+
+        let rollback = super::rollback_update(
+            &roots,
+            &backup_roots,
+            &[(destination, Some(old_file.clone()))],
+            false,
+            false,
+            false,
+            false,
+        );
+        let error =
+            super::rollback_failed_update(&backup, "activation failed", rollback).unwrap_err();
+
+        assert!(error.contains("recovery data retained"));
+        assert_eq!(fs::read(old_file).unwrap(), b"previous mod");
+    }
+
+    #[test]
+    fn managed_paths_require_a_known_root_prefix_and_cannot_escape_roots() {
+        let temp = TempDir::new();
+        let roots = separated_roots(temp.path());
+
+        assert_eq!(
+            managed_path(&roots, "game/mods/example.jar").unwrap(),
+            roots.game_root.join("mods/example.jar")
+        );
+        assert_eq!(
+            managed_path(&roots, "runtime/versions/forge/profile.json").unwrap(),
+            roots.pack_root.join("runtime/versions/forge/profile.json")
+        );
+        for invalid in [
+            "game/../outside.txt",
+            "game\\mods\\example.jar",
+            "unknown/file.jar",
+            "runtime/../../outside.jar",
+        ] {
+            assert!(managed_path(&roots, invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn valid_pack_allows_game_modified_config_files() {
+        let temp = TempDir::new();
+        let archive = pack_archive(&[
+            ("config/jinryuudragonblockc.cfg", b"default mod config"),
+            ("splash.properties", b"default splash"),
+        ]);
+        install_archive_transaction(temp.path(), &archive, "10.8", None).unwrap();
+        fs::write(
+            temp.path().join("game/config/jinryuudragonblockc.cfg"),
+            b"updated by minecraft",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("game/splash.properties"),
+            b"updated by minecraft",
+        )
+        .unwrap();
+
+        let roots = test_roots(temp.path());
+        let current = load_valid_installed_manifest(&roots);
+
+        assert!(
+            current.is_some(),
+            "Minecraft config changes should not invalidate the installed pack"
+        );
+        assert_eq!(
+            decide_update(current.as_ref(), Ok(&metadata("10.8"))).unwrap(),
+            UpdateDecision::AlreadyCurrent
+        );
+    }
+
+    #[test]
+    fn invalid_mod_files_still_invalidate_the_cached_pack() {
+        let temp = TempDir::new();
+        let archive = pack_archive(&[("mods/example.jar", b"original mod")]);
+        install_archive_transaction(temp.path(), &archive, "10.8", None).unwrap();
+        fs::write(temp.path().join("game/mods/example.jar"), b"modified mod").unwrap();
+
+        assert!(load_valid_installed_manifest(&test_roots(temp.path())).is_none());
+    }
+
+    #[test]
+    fn creates_resourcepacks_directory_for_minecraft_menu() {
+        let temp = TempDir::new();
+        let game_dir = temp.path().join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+
+        let resourcepacks_dir = ensure_resourcepacks_directory(&game_dir).unwrap();
+
+        assert_eq!(resourcepacks_dir, game_dir.join("resourcepacks"));
+        assert!(resourcepacks_dir.is_dir());
+    }
+
     #[test]
     fn install_manifest_rejects_html_invalid_paths_duplicates_and_symlinks() {
         let temp = TempDir::new();
@@ -1695,7 +2377,7 @@ mod tests {
     }
 
     #[test]
-    fn install_manifest_restores_old_root_when_manifest_persistence_fails() {
+    fn install_manifest_rejects_staging_outside_managed_root() {
         let temp = TempDir::new();
         let root = temp.path().join("pack");
         let staged_root = temp.path().join("staged");
@@ -1704,12 +2386,21 @@ mod tests {
         fs::write(root.join("game/old.txt"), b"old files").unwrap();
         fs::create_dir_all(staged_root.join("manifest.json")).unwrap();
         fs::create_dir_all(staged_root.join("game")).unwrap();
+        fs::create_dir_all(staged_root.join("runtime")).unwrap();
         fs::write(staged_root.join("game/new.txt"), b"new files").unwrap();
 
-        let error = super::apply_staged_update(&root, &staged_root, &installed_manifest("10.9"))
-            .unwrap_err();
+        let error = super::apply_staged_update(
+            &test_roots(&root),
+            &staged_root,
+            &installed_manifest("10.9"),
+            None,
+        )
+        .unwrap_err();
 
-        assert!(error.contains("manifest"), "unexpected error: {error}");
+        assert!(
+            error.contains("inside the managed pack directory"),
+            "unexpected error: {error}"
+        );
         assert_eq!(
             fs::read(root.join("manifest.json")).unwrap(),
             b"old manifest"
@@ -1757,14 +2448,14 @@ mod tests {
         let installed = install_archive_transaction(temp.path(), &archive, "10.8", None).unwrap();
 
         assert_eq!(
-            super::read_pack_status(temp.path()).unwrap(),
+            super::read_pack_status(&test_roots(temp.path())).unwrap(),
             Some(installed)
         );
 
         fs::write(temp.path().join("game/mods/example.jar"), b"changed").unwrap();
-        assert!(super::read_pack_status(temp.path()).is_err());
+        assert!(super::read_pack_status(&test_roots(temp.path())).is_err());
         assert_eq!(
-            super::read_pack_status(&temp.path().join("not-installed")).unwrap(),
+            super::read_pack_status(&test_roots(&temp.path().join("not-installed"))).unwrap(),
             None
         );
     }
