@@ -57,6 +57,31 @@ const requests = (fetchImpl) => async (url, options) => {
   return fetchImpl(parsed, options);
 };
 
+test("reports missing configuration when invoked without arguments", async () => {
+  const syncAnnouncements = await syncAnnouncementsPromise;
+  const configKeys = [
+    "DISCORD_BOT_TOKEN",
+    "DISCORD_UPDATES_CHANNEL_ID",
+    "DISCORD_PATCH_NOTES_CHANNEL_ID",
+  ];
+  const originalValues = new Map(
+    configKeys.map((key) => [key, process.env[key]]),
+  );
+  for (const key of configKeys) delete process.env[key];
+
+  try {
+    await assert.rejects(
+      syncAnnouncements(),
+      /Discord bot token and both channel IDs are required/,
+    );
+  } finally {
+    for (const [key, value] of originalValues) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("imports recent history and keeps the latest thirty messages", async () => {
   const syncAnnouncements = await syncAnnouncementsPromise;
   await withFeed(undefined, async ({ feedPath }) => {

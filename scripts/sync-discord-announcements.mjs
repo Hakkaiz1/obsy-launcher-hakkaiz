@@ -250,7 +250,7 @@ export const syncAnnouncements = async ({
     new URL("../public/announcements.json", import.meta.url),
   ),
   sleep = wait,
-}) => {
+} = {}) => {
   const token = env.DISCORD_BOT_TOKEN?.trim();
   const channelIds = {
     updates: env.DISCORD_UPDATES_CHANNEL_ID?.trim(),
