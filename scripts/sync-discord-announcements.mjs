@@ -1,7 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+const writeFeedAtomically = async (feedPath, feed) => {
+  const dir = path.dirname(feedPath);
+  await mkdir(dir, { recursive: true });
+
+  const temporaryPath = `${feedPath}.${randomUUID()}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(feed, null, 2)}\n`, "utf8");
+  await rename(temporaryPath, feedPath);
+};
 
 const DISCORD_API = "https://discord.com/api/v10";
 const MAX_MESSAGES = 30;
