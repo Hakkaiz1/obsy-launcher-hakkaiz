@@ -679,6 +679,29 @@ fn rollback_failed_update(
     Err(cause.to_string())
 }
 
+fn cleanup_failed_staging(
+    roots: &TechnicRoots,
+    staged_root: &Path,
+    pack_root_existed: bool,
+) -> Result<(), String> {
+    if staged_root.exists() {
+        fs::remove_dir_all(staged_root)
+            .map_err(|error| format!("Could not remove staging directory: {error}"))?;
+    }
+    if !pack_root_existed {
+        match fs::remove_dir(&roots.pack_root) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Could not remove newly created empty Technic directory: {error}"
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
 fn install_archive_reader_transaction<R: Read + Seek>(
     roots: &TechnicRoots,
     reader: R,
@@ -688,14 +711,21 @@ fn install_archive_reader_transaction<R: Read + Seek>(
     if pack_version.trim().is_empty() {
         return Err("Technic build version is empty".to_string());
     }
+    let pack_root_existed = roots.pack_root.exists();
     ensure_safe_directory(&roots.pack_root, "managed Technic directory")?;
     fs::create_dir_all(&roots.pack_root)
         .map_err(|error| format!("Could not create Technic installation directory: {error}"))?;
     let staged_root = roots
         .pack_root
         .join(format!(".dbc-super-staging-{}", uuid::Uuid::new_v4()));
-    fs::create_dir(&staged_root)
-        .map_err(|error| format!("Could not create Technic staging directory: {error}"))?;
+    if let Err(error) = fs::create_dir(&staged_root) {
+        return match cleanup_failed_staging(roots, &staged_root, pack_root_existed) {
+            Ok(()) => Err(format!("Could not create Technic staging directory: {error}")),
+            Err(cleanup_error) => Err(format!(
+                "Could not create Technic staging directory: {error}; cleanup failed: {cleanup_error}"
+            )),
+        };
+    }
 
     let prepared = (|| {
         let mut managed_paths = extract_pack_archive(reader, &staged_root)?;
@@ -727,9 +757,8 @@ fn install_archive_reader_transaction<R: Read + Seek>(
     let manifest = match prepared {
         Ok(manifest) => manifest,
         Err(error) => {
-            fs::remove_dir_all(&staged_root).map_err(|cleanup_error| {
-                format!("{error}; could not remove staging directory: {cleanup_error}")
-            })?;
+            cleanup_failed_staging(roots, &staged_root, pack_root_existed)
+                .map_err(|cleanup_error| format!("{error}; cleanup failed: {cleanup_error}"))?;
             return Err(error);
         }
     };
@@ -746,18 +775,14 @@ fn install_archive_reader_transaction<R: Read + Seek>(
             .map_err(|error| format!("Could not sync the staged pack manifest: {error}"))
     })();
     if let Err(error) = manifest_write_result {
-        fs::remove_dir_all(&staged_root).map_err(|cleanup_error| {
-            format!("{error}; could not remove staging directory: {cleanup_error}")
-        })?;
+        cleanup_failed_staging(roots, &staged_root, pack_root_existed)
+            .map_err(|cleanup_error| format!("{error}; cleanup failed: {cleanup_error}"))?;
         return Err(error);
     }
 
     if let Err(error) = apply_staged_update(roots, &staged_root, &manifest, previous) {
-        if staged_root.exists() {
-            fs::remove_dir_all(&staged_root).map_err(|cleanup_error| {
-                format!("{error}; could not remove staging directory: {cleanup_error}")
-            })?;
-        }
+        cleanup_failed_staging(roots, &staged_root, pack_root_existed)
+            .map_err(|cleanup_error| format!("{error}; cleanup failed: {cleanup_error}"))?;
         return Err(error);
     }
     if staged_root.exists() {
