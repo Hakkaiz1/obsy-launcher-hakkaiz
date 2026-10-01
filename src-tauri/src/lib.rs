@@ -157,7 +157,7 @@ fn update_launcher_state(
 
 #[tauri::command]
 fn get_profiles(state: State<'_, AppState>) -> Result<Vec<Profile>, String> {
-    Ok(state.profile_store.load())
+    state.profile_store.load()
 }
 
 #[tauri::command]
@@ -165,7 +165,7 @@ fn add_offline_profile(
     username: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<Profile>, String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = Profile::new_offline(username);
     if let Some(existing) = profiles
         .iter_mut()
@@ -193,7 +193,7 @@ fn remove_profile(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<Profile>, String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     profiles.retain(|p| p.id != id);
     state.profile_store.save(&profiles)?;
 
@@ -268,7 +268,7 @@ async fn launch_game_inner(
             .lock()
             .map_err(|e| e.to_string())?
             .clone();
-        let profiles = state.profile_store.load();
+        let profiles = state.profile_store.load()?;
         let profile = profiles
             .into_iter()
             .find(|p| p.id == profile_id)
@@ -553,8 +553,16 @@ async fn launch_game_inner(
         let duration_secs = start_time.elapsed().as_secs();
 
         // Record playtime
-        let mut store = minecraft::playtime::PlaytimeStore::load(&app_clone_wait);
-        store.add_session(&version_id_clone, duration_secs, &app_clone_wait);
+        match minecraft::playtime::PlaytimeStore::load(&app_clone_wait) {
+            Ok(mut store) => {
+                if let Err(error) =
+                    store.add_session(&version_id_clone, duration_secs, &app_clone_wait)
+                {
+                    eprintln!("[PLAYTIME] Could not save playtime data: {error}");
+                }
+            }
+            Err(error) => eprintln!("[PLAYTIME] Could not load playtime data: {error}"),
+        }
 
         // Analyze potential crash
         let logs_combined = session_logs
@@ -619,7 +627,7 @@ async fn poll_msa_auth(
     let skin_png = Some(format!("https://mc-heads.net/skin/{}", mc_profile.id));
     let slim = active_skin.map(|s| s.variant == "SLIM").unwrap_or(false);
 
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = Profile {
         id: mc_profile.id,
         username: mc_profile.name,
@@ -647,7 +655,7 @@ async fn poll_msa_auth(
 
 #[tauri::command]
 fn get_wardrobe(state: State<'_, AppState>) -> Result<Vec<crate::wardrobe::WardrobeSkin>, String> {
-    Ok(state.wardrobe_store.load())
+    state.wardrobe_store.load()
 }
 
 #[tauri::command]
@@ -674,13 +682,13 @@ async fn apply_skin(
     profile_id: String,
     skin_id: String,
 ) -> Result<(), String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = profiles
         .iter_mut()
         .find(|p| p.id == profile_id)
         .ok_or("Profile not found")?;
 
-    let skins = state.wardrobe_store.load();
+    let skins = state.wardrobe_store.load()?;
     let skin = skins
         .iter()
         .find(|s| s.id == skin_id)
@@ -733,7 +741,7 @@ async fn refresh_profile_skin(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<(), String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = profiles
         .iter_mut()
         .find(|p| p.id == profile_id)
@@ -784,7 +792,7 @@ async fn refresh_profile_token(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<(), String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = profiles
         .iter_mut()
         .find(|p| p.id == profile_id)
@@ -800,7 +808,7 @@ async fn refresh_profile_token(
                         if let Ok(mc_token) = crate::msa::auth_minecraft(&uhs, &xsts_token).await {
                             profile.access_token = Some(mc_token);
                             profile.refresh_token = Some(new_msa_tokens.refresh_token);
-                            let _ = state.profile_store.save(&profiles);
+                            state.profile_store.save(&profiles)?;
                         }
                     }
                 }
@@ -815,7 +823,7 @@ async fn get_account_capes(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<Vec<crate::msa::MinecraftCape>, String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = profiles
         .iter_mut()
         .find(|p| p.id == profile_id)
@@ -834,7 +842,7 @@ async fn get_account_capes(
                         mc_token = Some(token.clone());
                         profile.access_token = Some(token);
                         profile.refresh_token = Some(new_msa.refresh_token);
-                        let _ = state.profile_store.save(&profiles);
+                        state.profile_store.save(&profiles)?;
                     }
                 }
             }
@@ -854,7 +862,7 @@ async fn set_active_cape(
     profile_id: String,
     cape_id: Option<String>,
 ) -> Result<(), String> {
-    let mut profiles = state.profile_store.load();
+    let mut profiles = state.profile_store.load()?;
     let profile = profiles
         .iter_mut()
         .find(|p| p.id == profile_id)
@@ -873,7 +881,7 @@ async fn set_active_cape(
                         mc_token = Some(token.clone());
                         profile.access_token = Some(token);
                         profile.refresh_token = Some(new_msa.refresh_token);
-                        let _ = state.profile_store.save(&profiles);
+                        state.profile_store.save(&profiles)?;
                     }
                 }
             }
@@ -889,7 +897,7 @@ async fn set_active_cape(
 
 #[tauri::command]
 fn get_playtime_summary(app: AppHandle) -> Result<minecraft::playtime::PlaytimeSummary, String> {
-    Ok(minecraft::playtime::get_summary(&app))
+    minecraft::playtime::get_summary(&app)
 }
 
 #[tauri::command]
@@ -917,7 +925,7 @@ async fn apply_crash_action(
             Ok(format!("Memory allocated to {} MB", mb))
         }
         "disable-mod" => {
-            let mc_dir = crate::minecraft::versions::get_minecraft_dir();
+            let mc_dir = technic::managed_game_root()?;
             minecraft::crash::disable_mod_file(&mc_dir, &arg)
         }
         "install-java" => {
@@ -928,7 +936,7 @@ async fn apply_crash_action(
         }
         "open-folder" => {
             use tauri_plugin_opener::OpenerExt;
-            let mc_dir = crate::minecraft::versions::get_minecraft_dir();
+            let mc_dir = technic::managed_game_root()?;
             app.opener()
                 .open_path(mc_dir.to_string_lossy().to_string(), None::<&str>)
                 .map_err(|e| e.to_string())?;
@@ -960,9 +968,9 @@ pub fn run() {
             minecraft::migration::migrate_legacy_data_if_needed(&layout, &legacy_root)
                 .map_err(std::io::Error::other)?;
 
-            let initial_state = LauncherState::load(handle);
-            let profile_store = ProfileStore::new(handle);
-            let wardrobe_store = WardrobeStore::new(handle);
+            let initial_state = LauncherState::load(handle).map_err(std::io::Error::other)?;
+            let profile_store = ProfileStore::new(handle).map_err(std::io::Error::other)?;
+            let wardrobe_store = WardrobeStore::new(handle).map_err(std::io::Error::other)?;
             app.manage(AppState {
                 launcher_state: Mutex::new(initial_state),
                 profile_store,

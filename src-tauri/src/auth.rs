@@ -5,40 +5,57 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-fn get_encryption_key(store_path: &PathBuf) -> String {
-    // Prefer OS-native keychain (Keychain Access on macOS, Credential Manager on Windows)
-    // to prevent local malware from easily extracting Microsoft session tokens.
-    if let Ok(entry) = Entry::new("obsy-launcher", "profile-encryption-key") {
-        if let Ok(password) = entry.get_password() {
-            return password;
-        }
-        let key = Uuid::new_v4().to_string() + &Uuid::new_v4().to_string();
-        if entry.set_password(&key).is_ok() {
-            return key;
+fn get_encryption_key(store_path: &std::path::Path) -> Result<String, String> {
+    let key_path = store_path.with_file_name("profiles.key");
+    match fs::read_to_string(&key_path) {
+        Ok(key) if !key.is_empty() => return Ok(key),
+        Ok(_) => return Err("Profile encryption key file is empty".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "Could not read profile encryption key {}: {error}",
+                key_path.display()
+            ))
         }
     }
 
-    // OS Keyring might be unavailable in unsigned dev builds (macOS errSecAuthFailed) or headless setups.
-    // Fall back to a local key file to ensure the launcher still boots without panicking.
-    let key_path = store_path.with_file_name("profiles.key");
-    if key_path.exists() {
-        if let Ok(key) = fs::read_to_string(&key_path) {
-            return key;
+    if let Ok(entry) = Entry::new("obsy-launcher", "profile-encryption-key") {
+        if let Ok(password) = entry.get_password() {
+            return Ok(password);
+        }
+        let key = Uuid::new_v4().to_string() + &Uuid::new_v4().to_string();
+        if entry.set_password(&key).is_ok() {
+            return Ok(key);
         }
     }
 
     let key = Uuid::new_v4().to_string() + &Uuid::new_v4().to_string();
-    let _ = fs::write(&key_path, &key);
+    if let Some(parent) = key_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Could not create profile storage directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(&key_path, &key).map_err(|error| {
+        format!(
+            "Could not save profile encryption key {}: {error}",
+            key_path.display()
+        )
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = fs::metadata(&key_path) {
-            let mut perms = metadata.permissions();
-            perms.set_mode(0o600);
-            let _ = fs::set_permissions(&key_path, perms);
-        }
+        let metadata = fs::metadata(&key_path).map_err(|error| {
+            format!("Could not inspect profile encryption key permissions: {error}")
+        })?;
+        let mut perms = metadata.permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(&key_path, perms)
+            .map_err(|error| format!("Could not protect profile encryption key: {error}"))?;
     }
-    key
+    Ok(key)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -91,47 +108,86 @@ pub struct ProfileStore {
 }
 
 impl ProfileStore {
-    pub fn new(_app_handle: &tauri::AppHandle) -> Self {
-        let path = crate::minecraft::versions::get_minecraft_dir().join("profiles.json");
-        Self { path }
+    pub fn path_for(layout: &crate::minecraft::versions::StorageLayout) -> PathBuf {
+        layout.launcher_root().join("profiles.json")
     }
 
-    pub fn load(&self) -> Vec<Profile> {
-        if self.path.exists() {
-            if let Ok(contents) = fs::read_to_string(&self.path) {
-                let key = get_encryption_key(&self.path);
-                let mc = new_magic_crypt!(key, 256);
+    pub fn new(_app_handle: &tauri::AppHandle) -> Result<Self, String> {
+        let layout = crate::minecraft::versions::StorageLayout::current()?;
+        Ok(Self {
+            path: Self::path_for(&layout),
+        })
+    }
 
-                if let Ok(decrypted) = mc.decrypt_base64_to_string(&contents) {
-                    if let Ok(profiles) = serde_json::from_str(&decrypted) {
-                        return profiles;
-                    }
-                }
+    pub fn load(&self) -> Result<Vec<Profile>, String> {
+        let contents = match fs::read_to_string(&self.path) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(error) => {
+                return Err(format!(
+                    "Could not read profiles {}: {error}",
+                    self.path.display()
+                ))
             }
-        }
-        vec![]
+        };
+        let key = get_encryption_key(&self.path)?;
+        let mc = new_magic_crypt!(key, 256);
+        let decrypted = mc
+            .decrypt_base64_to_string(&contents)
+            .map_err(|error| format!("Could not decrypt saved profiles: {error}"))?;
+        serde_json::from_str(&decrypted)
+            .map_err(|error| format!("Could not parse saved profiles: {error}"))
     }
 
     pub fn save(&self, profiles: &[Profile]) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Could not create profile storage directory {}: {error}",
+                    parent.display()
+                )
+            })?;
         }
-        let json_contents = serde_json::to_string_pretty(profiles).map_err(|e| e.to_string())?;
+        let json_contents = serde_json::to_string_pretty(profiles)
+            .map_err(|error| format!("Could not serialize profiles: {error}"))?;
 
-        let key = get_encryption_key(&self.path);
+        let key = get_encryption_key(&self.path)?;
         let mc = new_magic_crypt!(key, 256);
         let encrypted = mc.encrypt_str_to_base64(json_contents);
 
-        fs::write(&self.path, encrypted).map_err(|e| e.to_string())?;
+        fs::write(&self.path, encrypted)
+            .map_err(|error| format!("Could not save profiles {}: {error}", self.path.display()))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = fs::metadata(&self.path) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o600);
-                let _ = fs::set_permissions(&self.path, perms);
-            }
+            let metadata = fs::metadata(&self.path)
+                .map_err(|error| format!("Could not inspect profile file permissions: {error}"))?;
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o600);
+            fs::set_permissions(&self.path, perms)
+                .map_err(|error| format!("Could not protect saved profiles: {error}"))?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProfileStore;
+    use crate::minecraft::versions::StorageLayout;
+    use std::path::PathBuf;
+
+    #[test]
+    fn profile_store_and_encryption_key_are_under_launcher_metadata_root() {
+        let layout = StorageLayout::from_app_root(PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+        let profiles = ProfileStore::path_for(&layout);
+
+        assert_eq!(profiles, layout.launcher_root().join("profiles.json"));
+        assert_eq!(
+            profiles.with_file_name("profiles.key").parent(),
+            Some(layout.launcher_root().as_path())
+        );
     }
 }

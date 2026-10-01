@@ -1,10 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Returns the central CAS (Content-Addressed Storage) directory in .minecraft/obsy_objects
-pub fn get_objects_dir() -> PathBuf {
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    mc_dir.join("obsy_objects")
+pub fn get_objects_dir_for_layout(layout: &crate::minecraft::versions::StorageLayout) -> PathBuf {
+    layout.launcher_root().join("objects")
+}
+
+pub fn get_objects_dir() -> Result<PathBuf, String> {
+    let layout = crate::minecraft::versions::StorageLayout::current()?;
+    Ok(get_objects_dir_for_layout(&layout))
 }
 
 /// Links `src` to `dst` using hard links if possible, falling back to copying.
@@ -33,13 +36,20 @@ pub fn store_and_link(src_file: &Path, dst_file: &Path, sha1: &str) -> std::io::
     }
 
     let prefix = &sha1[0..2];
-    let cas_dir = get_objects_dir().join(prefix);
+    let cas_dir = get_objects_dir()
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?
+        .join(prefix);
     fs::create_dir_all(&cas_dir)?;
 
     let cas_file = cas_dir.join(sha1);
     if !cas_file.exists() {
-        if fs::hard_link(src_file, &cas_file).is_err() {
-            let _ = fs::copy(src_file, &cas_file);
+        if let Err(link_error) = fs::hard_link(src_file, &cas_file) {
+            fs::copy(src_file, &cas_file).map_err(|copy_error| {
+                std::io::Error::new(
+                    copy_error.kind(),
+                    format!("Could not link ({link_error}) or copy file into object storage: {copy_error}"),
+                )
+            })?;
         }
     }
 
@@ -50,6 +60,7 @@ pub fn store_and_link(src_file: &Path, dst_file: &Path, sha1: &str) -> std::io::
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::minecraft::versions::StorageLayout;
     use std::io::Write;
 
     #[test]
@@ -70,5 +81,17 @@ mod tests {
         assert_eq!(fs::read_to_string(&dst).unwrap(), "hello obsy dedup");
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn cas_objects_are_stored_under_launcher_metadata_root() {
+        let layout = StorageLayout::from_app_root(std::path::PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+
+        assert_eq!(
+            get_objects_dir_for_layout(&layout),
+            layout.launcher_root().join("objects")
+        );
     }
 }

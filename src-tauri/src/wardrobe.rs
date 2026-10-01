@@ -17,29 +17,65 @@ pub struct WardrobeStore {
     path: PathBuf,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::WardrobeStore;
+    use crate::minecraft::versions::StorageLayout;
+    use std::path::PathBuf;
+
+    #[test]
+    fn wardrobe_file_is_under_launcher_metadata_root() {
+        let layout = StorageLayout::from_app_root(PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+
+        assert_eq!(
+            WardrobeStore::path_for(&layout),
+            layout.launcher_root().join("wardrobe.json")
+        );
+    }
+}
+
 impl WardrobeStore {
-    pub fn new(_app_handle: &tauri::AppHandle) -> Self {
-        let path = crate::minecraft::versions::get_minecraft_dir().join("wardrobe.json");
-        Self { path }
+    pub fn path_for(layout: &crate::minecraft::versions::StorageLayout) -> PathBuf {
+        layout.launcher_root().join("wardrobe.json")
     }
 
-    pub fn load(&self) -> Vec<WardrobeSkin> {
-        if self.path.exists() {
-            if let Ok(contents) = fs::read_to_string(&self.path) {
-                if let Ok(skins) = serde_json::from_str(&contents) {
-                    return skins;
-                }
+    pub fn new(_app_handle: &tauri::AppHandle) -> Result<Self, String> {
+        let layout = crate::minecraft::versions::StorageLayout::current()?;
+        Ok(Self {
+            path: Self::path_for(&layout),
+        })
+    }
+
+    pub fn load(&self) -> Result<Vec<WardrobeSkin>, String> {
+        let contents = match fs::read_to_string(&self.path) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(error) => {
+                return Err(format!(
+                    "Could not read wardrobe {}: {error}",
+                    self.path.display()
+                ))
             }
-        }
-        vec![]
+        };
+        serde_json::from_str(&contents)
+            .map_err(|error| format!("Could not parse wardrobe data: {error}"))
     }
 
     pub fn save(&self, skins: &[WardrobeSkin]) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Could not create wardrobe directory {}: {error}",
+                    parent.display()
+                )
+            })?;
         }
-        let json_contents = serde_json::to_string_pretty(skins).map_err(|e| e.to_string())?;
-        fs::write(&self.path, json_contents).map_err(|e| e.to_string())?;
+        let json_contents = serde_json::to_string_pretty(skins)
+            .map_err(|error| format!("Could not serialize wardrobe data: {error}"))?;
+        fs::write(&self.path, json_contents)
+            .map_err(|error| format!("Could not save wardrobe {}: {error}", self.path.display()))?;
         Ok(())
     }
 
@@ -50,7 +86,7 @@ impl WardrobeStore {
         slim: bool,
         profile_id: String,
     ) -> Result<WardrobeSkin, String> {
-        let mut skins = self.load();
+        let mut skins = self.load()?;
 
         let id = Uuid::new_v4().to_string();
         use base64::{engine::general_purpose, Engine as _};
@@ -74,7 +110,7 @@ impl WardrobeStore {
     }
 
     pub fn remove_skin(&self, id: &str) -> Result<(), String> {
-        let mut skins = self.load();
+        let mut skins = self.load()?;
         if let Some(index) = skins.iter().position(|s| s.id == id) {
             skins.remove(index);
             self.save(&skins)?;

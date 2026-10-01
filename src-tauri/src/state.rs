@@ -88,32 +88,48 @@ impl LauncherState {
         }
     }
 
-    pub fn get_path(_app_handle: &tauri::AppHandle) -> PathBuf {
-        crate::minecraft::versions::get_minecraft_dir().join("launcher_state.json")
+    pub fn path_for(layout: &crate::minecraft::versions::StorageLayout) -> PathBuf {
+        layout.launcher_root().join("launcher_state.json")
     }
 
-    pub fn load(app_handle: &tauri::AppHandle) -> Self {
-        let path = Self::get_path(app_handle);
-        let mut state = if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
-                Err(_) => Self::default(),
+    pub fn get_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+        let layout = crate::minecraft::versions::StorageLayout::current()?;
+        Ok(Self::path_for(&layout))
+    }
+
+    pub fn load(app_handle: &tauri::AppHandle) -> Result<Self, String> {
+        let path = Self::get_path(app_handle)?;
+        let mut state = match fs::read_to_string(&path) {
+            Ok(contents) => serde_json::from_str(&contents)
+                .map_err(|error| format!("Could not parse launcher state: {error}"))?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(error) => {
+                return Err(format!(
+                    "Could not read launcher state {}: {error}",
+                    path.display()
+                ))
             }
-        } else {
-            Self::default()
         };
         state.normalize();
-        let _ = state.save(app_handle);
-        state
+        state.save(app_handle)?;
+        Ok(state)
     }
 
     pub fn save(&self, app_handle: &tauri::AppHandle) -> Result<(), String> {
-        let path = Self::get_path(app_handle);
+        let path = Self::get_path(app_handle)?;
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Could not create launcher state directory {}: {error}",
+                    parent.display()
+                )
+            })?;
         }
-        let contents = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        fs::write(path, contents).map_err(|e| e.to_string())?;
+        let contents = serde_json::to_string_pretty(self)
+            .map_err(|error| format!("Could not serialize launcher state: {error}"))?;
+        fs::write(&path, contents).map_err(|error| {
+            format!("Could not save launcher state {}: {error}", path.display())
+        })?;
         Ok(())
     }
 }
@@ -121,6 +137,20 @@ impl LauncherState {
 #[cfg(test)]
 mod tests {
     use super::{Language, LauncherState};
+    use crate::minecraft::versions::StorageLayout;
+    use std::path::PathBuf;
+
+    #[test]
+    fn launcher_state_file_is_under_launcher_metadata_root() {
+        let layout = StorageLayout::from_app_root(PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+
+        assert_eq!(
+            LauncherState::path_for(&layout),
+            layout.launcher_root().join("launcher_state.json")
+        );
+    }
 
     #[test]
     fn language_defaults_to_portuguese_in_saved_state() {
