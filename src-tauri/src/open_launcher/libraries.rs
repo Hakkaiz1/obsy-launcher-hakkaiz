@@ -347,6 +347,29 @@ pub(crate) fn get_libraries_classpath(
     classpath
 }
 
+fn merge_library_classpaths(vanilla: Vec<String>, modded: Vec<String>) -> Vec<String> {
+    let mut classpath = modded;
+    for path in vanilla {
+        if !classpath.contains(&path) {
+            classpath.push(path);
+        }
+    }
+    classpath
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_library_classpaths;
+
+    #[test]
+    fn modded_libraries_precede_vanilla_libraries_for_class_loading() {
+        let classpath =
+            merge_library_classpaths(vec!["guava-15.0.jar".into()], vec!["guava-17.0.jar".into()]);
+
+        assert_eq!(classpath, vec!["guava-17.0.jar", "guava-15.0.jar"]);
+    }
+}
+
 impl Launcher {
     pub async fn install_libraries(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
         if self.version.profile.is_null() {
@@ -505,25 +528,22 @@ impl Launcher {
     }
 
     pub(crate) fn get_classpath(&self) -> Vec<String> {
-        let mut classpath = get_libraries_classpath(
+        let vanilla_classpath = get_libraries_classpath(
             &self.game_dir,
             &self.version.profile["libraries"].as_array().unwrap(),
         );
 
-        if self.version.modded_profile.is_object()
+        let modded_classpath = if self.version.modded_profile.is_object()
             && self.version.modded_profile["libraries"].is_array()
         {
-            let modded_classpath = get_libraries_classpath(
+            get_libraries_classpath(
                 &self.game_dir,
                 &self.version.modded_profile["libraries"].as_array().unwrap(),
-            );
-            for path in modded_classpath {
-                if !classpath.contains(&path) {
-                    classpath.push(path);
-                }
-            }
-        }
+            )
+        } else {
+            Vec::new()
+        };
 
-        classpath
+        merge_library_classpaths(vanilla_classpath, modded_classpath)
     }
 }

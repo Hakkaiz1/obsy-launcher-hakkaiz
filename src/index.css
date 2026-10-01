@@ -173,6 +173,12 @@ input[id*="hidden-input"],
   box-sizing: border-box !important;
 }
 
+[data-profile-dialog] {
+  max-width: min(420px, calc(100vw - 2.5rem)) !important;
+  padding: 1rem !important;
+  gap: 0.75rem !important;
+}
+
 [data-settings-dialog] {
   max-width: min(500px, calc(100vw - 2.5rem)) !important;
 }

@@ -189,7 +189,7 @@ export const ProfileSelector = () => {
                 <Plus className="h-4 w-4" />
               </DialogTrigger>
             </m.div>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent data-profile-dialog="" className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>{t("profile.addProfileTitle")}</DialogTitle>
               </DialogHeader>
@@ -206,15 +206,15 @@ export const ProfileSelector = () => {
                 <div className="relative overflow-hidden">
                   <TabsContent
                     value="offline"
-                    className="mt-0 flex flex-col gap-4 py-4"
+                    className="mt-0 flex flex-col gap-3 py-2"
                   >
                     <m.div
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="flex flex-col gap-4"
+                      className="flex flex-col gap-3"
                     >
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-1.5">
                         <Label htmlFor="username">
                           {t("profile.username")}
                         </Label>
@@ -232,7 +232,7 @@ export const ProfileSelector = () => {
                       <Button
                         onClick={handleAddProfile}
                         disabled={!newUsername.trim()}
-                        className="mt-2 transition-colors"
+                        className="transition-colors"
                       >
                         {t("profile.addOfflineProfile")}
                       </Button>
@@ -241,13 +241,13 @@ export const ProfileSelector = () => {
 
                   <TabsContent
                     value="microsoft"
-                    className="mt-0 flex flex-col gap-4 py-4"
+                    className="mt-0 flex flex-col gap-3 py-2"
                   >
                     <m.div
                       initial={{ opacity: 0, x: 10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="flex flex-col gap-4"
+                      className="flex flex-col gap-3"
                     >
                       {!msaData && !isMsaPolling && (
                         <Button

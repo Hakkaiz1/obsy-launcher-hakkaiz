@@ -300,6 +300,7 @@ async fn launch_game_inner(
     let game_dir = technic::managed_game_root()?;
     std::fs::create_dir_all(&game_dir)
         .map_err(|error| format!("Could not create DBC Super game directory: {error}"))?;
+    technic::ensure_resourcepacks_directory(&game_dir)?;
 
     let java_path = if let Some(path) = &launcher_state.java_path {
         if path.trim().is_empty() {
@@ -485,6 +486,12 @@ async fn launch_game_inner(
 
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
 
     let mut child = command.spawn().map_err(|e| e.to_string())?;
 

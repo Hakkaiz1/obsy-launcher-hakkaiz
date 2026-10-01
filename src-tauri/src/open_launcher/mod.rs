@@ -16,6 +16,29 @@ mod forge;
 mod libraries;
 pub(crate) mod utils;
 
+fn normalize_windows_path(path: PathBuf) -> PathBuf {
+    let path = path.to_string_lossy();
+    #[cfg(windows)]
+    let path = {
+        let candidate = path.trim_start_matches(|character| character == '\\' || character == '/');
+        let bytes = candidate.as_bytes();
+        if candidate.len() != path.len()
+            && bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'\\' | b'/')
+        {
+            candidate
+        } else {
+            path.as_ref()
+        }
+    };
+    #[cfg(not(windows))]
+    let path = path.as_ref();
+
+    PathBuf::from(path.replace("/", std::path::MAIN_SEPARATOR_STR))
+}
+
 /// The `Launcher` struct is the main struct of the package. It is used to configure and launch a Minecraft game.
 pub struct Launcher {
     game_dir: PathBuf,
@@ -237,8 +260,7 @@ impl Launcher {
     /// # }
     /// ```
     pub async fn new(game_dir: &str, java_executable: &str, version: version::Version) -> Self {
-        let game_dir = game_dir.replace("/", std::path::MAIN_SEPARATOR_STR);
-        let game_dir = std::path::Path::new(&game_dir);
+        let game_dir = normalize_windows_path(PathBuf::from(game_dir));
         fs::create_dir_all(&game_dir).await.unwrap();
 
         let java_executable = java_executable.replace("/", std::path::MAIN_SEPARATOR_STR);
@@ -273,7 +295,7 @@ impl Launcher {
     }
 
     pub fn set_execution_directory(&mut self, dir: PathBuf) {
-        self.execution_dir = Some(dir);
+        self.execution_dir = Some(normalize_windows_path(dir));
     }
 
     /// Add a jvm argument to the launch command.
@@ -728,5 +750,24 @@ impl Launcher {
     pub fn launch(&mut self) -> Result<Child, Box<dyn Error + Send + Sync>> {
         let mut command: Command = self.command()?;
         Ok(command.spawn().unwrap())
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::normalize_windows_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn removes_a_leading_separator_before_a_windows_drive_path() {
+        for input in [
+            r"\C:\Users\test\DBC Super Launcher",
+            "/D:/Games/DBC Super Launcher",
+        ] {
+            assert_eq!(
+                normalize_windows_path(PathBuf::from(input)),
+                PathBuf::from(input.trim_start_matches(['\\', '/']).replace('/', "\\"))
+            );
+        }
     }
 }

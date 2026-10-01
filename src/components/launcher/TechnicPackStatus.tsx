@@ -1,4 +1,3 @@
-import { Progress } from "@/components/ui/progress";
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
@@ -17,7 +16,6 @@ interface InstalledPackManifest {
 
 interface TechnicProgress {
   status: string;
-  progress: number;
   detail?: string | null;
 }
 
@@ -39,7 +37,6 @@ export const TechnicPackStatus = ({ error }: TechnicPackStatusProps) => {
   const { t } = useTranslation();
   const [manifest, setManifest] = useState<InstalledPackManifest | null>(null);
   const [phase, setPhase] = useState("loading_status");
-  const [progress, setProgress] = useState(0);
   const [detail, setDetail] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -77,7 +74,6 @@ export const TechnicPackStatus = ({ error }: TechnicPackStatusProps) => {
     void listen<TechnicProgress>("technic-progress", (event) => {
       const update = event.payload;
       setPhase(update.status);
-      setProgress(Math.max(0, Math.min(update.progress, 1)) * 100);
       setDetail(update.detail ?? null);
       if (update.status === "checking_technic" || update.status === "ready") {
         setWarning(null);
@@ -149,10 +145,6 @@ export const TechnicPackStatus = ({ error }: TechnicPackStatusProps) => {
             version: manifest.minecraft_version,
           })}
         </p>
-      )}
-
-      {(phase === "downloading_technic" || phase === "applying_technic") && (
-        <Progress value={progress} className="h-1.5 w-full" />
       )}
 
       {detail && isBusy && (
