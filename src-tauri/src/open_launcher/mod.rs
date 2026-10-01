@@ -221,9 +221,11 @@ impl Launcher {
     /// * `java_executable` - The path to the Java executable (e.g. `java` for linux, `java.exe` for windows).
     /// * `version` - The version of Minecraft to launch. (`version::Version` struct)
     /// # Example
-    /// ```
-    /// use open_launcher::{auth, version, Launcher};
-    /// let mut launcher = Launcher::new(
+    /// ```no_run
+    /// use obsy_launcher_lib::open_launcher::{version, Launcher};
+    ///
+    /// # async fn example() {
+    /// let _launcher = Launcher::new(
     ///     "/home/user/.open_launcher",
     ///     "/usr/bin/java",
     ///     version::Version {
@@ -231,7 +233,8 @@ impl Launcher {
     ///         loader: Some("quilt".to_string()),
     ///         loader_version: Some("0.25.0".to_string()),
     ///     }
-    /// );
+    /// ).await;
+    /// # }
     /// ```
     pub async fn new(game_dir: &str, java_executable: &str, version: version::Version) -> Self {
         let game_dir = game_dir.replace("/", std::path::MAIN_SEPARATOR_STR);
@@ -277,8 +280,16 @@ impl Launcher {
     /// # Arguments
     /// * `arg` - The argument to add.
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # use obsy_launcher_lib::open_launcher::{version, Launcher};
+    /// # async fn example() {
+    /// # let mut launcher = Launcher::new("", "", version::Version {
+    /// #     minecraft_version: "1.20.2".to_string(),
+    /// #     loader: None,
+    /// #     loader_version: None,
+    /// # }).await;
     /// launcher.jvm_arg("-Xmx2G");
+    /// # }
     /// ```
     pub fn jvm_arg(&mut self, arg: &str) {
         self.args.push(arg.to_string());
@@ -288,8 +299,16 @@ impl Launcher {
     /// # Arguments
     /// * `arg` - The argument to add.
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # use obsy_launcher_lib::open_launcher::{version, Launcher};
+    /// # async fn example() {
+    /// # let mut launcher = Launcher::new("", "", version::Version {
+    /// #     minecraft_version: "1.20.2".to_string(),
+    /// #     loader: None,
+    /// #     loader_version: None,
+    /// # }).await;
     /// launcher.arg("--demo");
+    /// # }
     /// ```
     pub fn arg(&mut self, arg: &str) {
         self.game_args.push(arg.to_string());
@@ -300,19 +319,35 @@ impl Launcher {
     /// * `auth` - The authentication details.
     /// # Example
     /// Online auth:
-    /// ```
+    /// ```no_run
+    /// # use obsy_launcher_lib::open_launcher::{auth, version, Launcher};
+    /// # async fn example() {
+    /// # let mut launcher = Launcher::new("", "", version::Version {
+    /// #     minecraft_version: "1.20.2".to_string(),
+    /// #     loader: None,
+    /// #     loader_version: None,
+    /// # }).await;
     /// launcher.auth(auth::Auth::new(
-    ///     username: "username".to_string(),
-    ///     uuid: "uuid".to_string(),
-    ///     access_token: "access_token".to_string(),
-    ///     user_type: "msa".to_string(),
-    ///     user_properties: "{}".to_string(),
+    ///     "msa".to_string(),
+    ///     "{}".to_string(),
+    ///     "username".to_string(),
+    ///     "uuid".to_string(),
+    ///     "access_token".to_string(),
     /// ));
+    /// # }
     /// ```
     /// # Example
     /// Offline auth:
-    /// ```
+    /// ```no_run
+    /// # use obsy_launcher_lib::open_launcher::{auth, version, Launcher};
+    /// # async fn example() {
+    /// # let mut launcher = Launcher::new("", "", version::Version {
+    /// #     minecraft_version: "1.20.2".to_string(),
+    /// #     loader: None,
+    /// #     loader_version: None,
+    /// # }).await;
     /// launcher.auth(auth::OfflineAuth::new("username"));
+    /// # }
     /// ```
     pub fn auth(&mut self, auth: auth::Auth) {
         self.auth = auth;
@@ -365,8 +400,16 @@ impl Launcher {
     /// # Returns
     /// * `Result<Command, Box<dyn std::error::Error + Send + Sync>>` - The command to launch the game.
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # use obsy_launcher_lib::open_launcher::{version, Launcher};
+    /// # async fn example() {
+    /// let mut launcher = Launcher::new("", "", version::Version {
+    ///     minecraft_version: "1.20.2".to_string(),
+    ///     loader: None,
+    ///     loader_version: None,
+    /// }).await;
     /// let command = launcher.command().unwrap();
+    /// # }
     /// ```
     pub fn command(&mut self) -> Result<Command, Box<dyn Error + Send + Sync>> {
         if self.version.profile.is_null() {

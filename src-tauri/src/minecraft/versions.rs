@@ -1,139 +1,124 @@
-use super::models::{MinecraftVersion, MojangManifest};
 use std::path::PathBuf;
 
-pub async fn get_mojang_versions() -> Result<Vec<MinecraftVersion>, String> {
-    let cache_path = get_minecraft_dir().join("version_manifest.json");
-
-    if cache_path.exists() {
-        if let Ok(data) = std::fs::read(&cache_path) {
-            if let Ok(m) = serde_json::from_slice::<MojangManifest>(&data) {
-                let bg_cache_path = cache_path.clone();
-                tokio::spawn(async move {
-                    let client = crate::open_launcher::utils::get_http_client();
-                    if let Ok(response) = client
-                        .get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
-                        .timeout(std::time::Duration::from_secs(5))
-                        .send()
-                        .await
-                    {
-                        if let Ok(manifest_bytes) = response.bytes().await {
-                            let _ = std::fs::write(&bg_cache_path, &manifest_bytes);
-                        }
-                    }
-                });
-
-                return Ok(m
-                    .versions
-                    .into_iter()
-                    .map(|v| MinecraftVersion {
-                        id: v.id,
-                        r#type: v.r#type,
-                        is_local: false,
-                        release_time: Some(v.release_time),
-                    })
-                    .collect());
-            }
-        }
-    }
-
-    let client = crate::open_launcher::utils::get_http_client();
-    let response = client
-        .get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
-        .timeout(std::time::Duration::from_secs(4))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let manifest_bytes = response.bytes().await.map_err(|e| e.to_string())?;
-    let manifest: MojangManifest =
-        serde_json::from_slice(&manifest_bytes).map_err(|e| e.to_string())?;
-
-    let _ = std::fs::write(&cache_path, &manifest_bytes);
-
-    let versions = manifest
-        .versions
-        .into_iter()
-        .map(|v| MinecraftVersion {
-            id: v.id,
-            r#type: v.r#type,
-            is_local: false,
-            release_time: Some(v.release_time),
-        })
-        .collect();
-
-    Ok(versions)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageLayout {
+    app_root: PathBuf,
 }
 
-pub fn get_minecraft_dir() -> PathBuf {
-    #[cfg(debug_assertions)]
-    {
-        if let Ok(cwd) = std::env::current_dir() {
-            return cwd.join(".obsy");
-        }
+impl StorageLayout {
+    pub fn from_app_root(app_root: PathBuf) -> Self {
+        Self { app_root }
     }
 
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            #[cfg(target_os = "macos")]
-            {
-                let path_str = exe_dir.to_string_lossy();
-                if path_str.contains(".app/Contents/MacOS") {
-                    let mut path = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-                    path.push("obsy");
-                    return path;
-                }
-            }
-            return exe_dir.join(".obsy");
-        }
+    pub fn resolve(
+        is_debug: bool,
+        current_dir: Option<PathBuf>,
+        data_dir: Option<PathBuf>,
+    ) -> Result<Self, String> {
+        let app_root = if is_debug {
+            current_dir
+                .ok_or_else(|| "Could not resolve the launcher working directory".to_string())?
+                .join(".obsy")
+        } else {
+            data_dir
+                .ok_or_else(|| "Could not resolve the user data directory".to_string())?
+                .join("DBC Super Launcher")
+        };
+        Ok(Self::from_app_root(app_root))
     }
 
-    if let Ok(cwd) = std::env::current_dir() {
-        return cwd.join(".obsy");
+    pub fn current() -> Result<Self, String> {
+        Self::resolve(
+            cfg!(debug_assertions),
+            std::env::current_dir().ok(),
+            dirs::data_dir(),
+        )
     }
 
-    PathBuf::from(".obsy")
+    pub fn app_root(&self) -> &std::path::Path {
+        &self.app_root
+    }
+
+    pub fn game_root(&self) -> &std::path::Path {
+        &self.app_root
+    }
+
+    pub fn launcher_root(&self) -> PathBuf {
+        self.app_root.join("launcher")
+    }
+
+    pub fn java_root(&self) -> PathBuf {
+        self.app_root.join("java")
+    }
+
+    pub fn technic_pack_root(&self, pack_id: u64) -> PathBuf {
+        self.launcher_root()
+            .join("technic")
+            .join(pack_id.to_string())
+    }
 }
 
-pub fn get_local_versions() -> Result<Vec<MinecraftVersion>, String> {
-    let mut versions = Vec::new();
-    let mc_dir = get_minecraft_dir();
+#[cfg(test)]
+mod tests {
+    use super::StorageLayout;
+    use std::path::PathBuf;
 
-    // Scan versions directory
-    let versions_dir = mc_dir.join("versions");
-    if let Ok(entries) = std::fs::read_dir(versions_dir) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                let id = entry.file_name().to_string_lossy().to_string();
-                let json_path = entry.path().join(format!("{}.json", id));
-                if json_path.exists() {
-                    versions.push(MinecraftVersion {
-                        id,
-                        r#type: "local".to_string(),
-                        is_local: true,
-                        release_time: None,
-                    });
-                }
-            }
-        }
+    #[test]
+    fn storage_layout_uses_app_root_for_game_and_separates_launcher_data() {
+        let layout = StorageLayout::from_app_root(PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+
+        assert_eq!(
+            layout.game_root(),
+            PathBuf::from("C:/Users/test/AppData/Roaming/DBC Super Launcher")
+        );
+        assert_eq!(
+            layout.launcher_root(),
+            PathBuf::from("C:/Users/test/AppData/Roaming/DBC Super Launcher/launcher")
+        );
+        assert_eq!(
+            layout.java_root(),
+            PathBuf::from("C:/Users/test/AppData/Roaming/DBC Super Launcher/java")
+        );
+        assert_eq!(
+            layout.technic_pack_root(1_132_904),
+            PathBuf::from(
+                "C:/Users/test/AppData/Roaming/DBC Super Launcher/launcher/technic/1132904"
+            )
+        );
     }
 
-    // Scan instances directory
-    let instances_dir = mc_dir.join("instances");
-    if let Ok(entries) = std::fs::read_dir(instances_dir) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                let id = entry.file_name().to_string_lossy().to_string();
-                if !versions.iter().any(|v| v.id == id) {
-                    versions.push(MinecraftVersion {
-                        id,
-                        r#type: "instance".to_string(),
-                        is_local: true,
-                        release_time: None,
-                    });
-                }
-            }
-        }
+    #[test]
+    fn storage_layout_resolves_debug_root_from_current_directory() {
+        let layout =
+            StorageLayout::resolve(true, Some(PathBuf::from("C:/projects/obsy-launcher")), None)
+                .unwrap();
+
+        assert_eq!(
+            layout.app_root(),
+            PathBuf::from("C:/projects/obsy-launcher/.obsy")
+        );
     }
 
-    Ok(versions)
+    #[test]
+    fn storage_layout_resolves_release_root_from_roaming_data_directory() {
+        let layout = StorageLayout::resolve(
+            false,
+            None,
+            Some(PathBuf::from("C:/Users/test/AppData/Roaming")),
+        )
+        .unwrap();
+
+        assert_eq!(
+            layout.app_root(),
+            PathBuf::from("C:/Users/test/AppData/Roaming/DBC Super Launcher")
+        );
+    }
+
+    #[test]
+    fn storage_layout_rejects_missing_base_paths_without_fallback() {
+        assert!(StorageLayout::resolve(false, Some(PathBuf::from("C:/cwd")), None).is_err());
+        assert!(StorageLayout::resolve(true, None, Some(PathBuf::from("C:/data"))).is_err());
+    }
 }

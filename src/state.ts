@@ -16,19 +16,7 @@ export interface LauncherState {
   jvmArguments: string;
   javaPath: string | null;
   closeAfterLaunch: boolean;
-  releaseFilter: boolean;
-  moddedFilter: boolean;
-  snapshotFilter: boolean;
-  legacyFilter: boolean;
   selectedProfileId: string | null;
-  selectedVersionId: string | null;
-}
-
-export interface MinecraftVersion {
-  id: string;
-  type: string;
-  isLocal: boolean;
-  releaseTime: string | null;
 }
 
 export interface Profile {
@@ -58,7 +46,6 @@ export interface WardrobeSkin {
 interface LauncherStore {
   state: LauncherState | null;
   profiles: Profile[];
-  versions: MinecraftVersion[];
   wardrobe: WardrobeSkin[];
   startupTimeMs: number | null;
   appMemoryMb: number | null;
@@ -70,10 +57,6 @@ interface LauncherStore {
   addOfflineProfile: (username: string) => Promise<void>;
   selectProfile: (id: string) => Promise<void>;
   removeProfile: (id: string) => Promise<void>;
-  fetchVersions: () => Promise<void>;
-  selectVersion: (id: string) => Promise<void>;
-  openVersionFolder: (versionId: string) => Promise<void>;
-  deleteInstance: (versionId: string) => Promise<void>;
   fetchWardrobe: () => Promise<void>;
   refreshProfileSkin: (profileId: string) => Promise<void>;
   refreshProfileToken: (profileId: string) => Promise<void>;
@@ -108,7 +91,6 @@ async function safeInvoke<T>(
 export const useLauncherStore = create<LauncherStore>((set, get) => ({
   state: null,
   profiles: [],
-  versions: [],
   wardrobe: [],
   startupTimeMs: null,
   appMemoryMb: null,
@@ -172,36 +154,6 @@ export const useLauncherStore = create<LauncherStore>((set, get) => ({
       if (currentState?.selectedProfileId === id) {
         set({ state: { ...currentState, selectedProfileId: null } });
       }
-    }
-  },
-
-  fetchVersions: async () => {
-    const versions = await safeInvoke<MinecraftVersion[]>(
-      "get_versions",
-      undefined,
-      [],
-    );
-    if (versions) set({ versions });
-  },
-
-  selectVersion: async (id: string) => {
-    await safeInvoke("select_version", { id });
-    const currentState = get().state;
-    if (currentState) {
-      set({ state: { ...currentState, selectedVersionId: id } });
-    }
-  },
-
-  openVersionFolder: async (versionId: string) => {
-    await safeInvoke("open_version_folder", { versionId });
-  },
-
-  deleteInstance: async (versionId: string) => {
-    await safeInvoke("delete_instance", { versionId });
-    await get().fetchVersions();
-    const currentState = get().state;
-    if (currentState?.selectedVersionId === versionId) {
-      set({ state: { ...currentState, selectedVersionId: null } });
     }
   },
 

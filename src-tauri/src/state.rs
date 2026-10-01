@@ -45,13 +45,7 @@ pub struct LauncherState {
     pub java_path: Option<String>,
     pub close_after_launch: bool,
 
-    pub release_filter: bool,
-    pub modded_filter: bool,
-    pub snapshot_filter: bool,
-    pub legacy_filter: bool,
-
     pub selected_profile_id: Option<String>,
-    pub selected_version_id: Option<String>,
 }
 
 impl Default for LauncherState {
@@ -68,12 +62,7 @@ impl Default for LauncherState {
             jvm_arguments: String::new(),
             java_path: None,
             close_after_launch: false,
-            release_filter: true,
-            modded_filter: true,
-            snapshot_filter: false,
-            legacy_filter: false,
             selected_profile_id: None,
-            selected_version_id: None,
         }
     }
 }
@@ -99,39 +88,69 @@ impl LauncherState {
         }
     }
 
-    pub fn get_path(_app_handle: &tauri::AppHandle) -> PathBuf {
-        crate::minecraft::versions::get_minecraft_dir().join("launcher_state.json")
+    pub fn path_for(layout: &crate::minecraft::versions::StorageLayout) -> PathBuf {
+        layout.launcher_root().join("launcher_state.json")
     }
 
-    pub fn load(app_handle: &tauri::AppHandle) -> Self {
-        let path = Self::get_path(app_handle);
-        let mut state = if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
-                Err(_) => Self::default(),
+    pub fn get_path(_app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+        let layout = crate::minecraft::versions::StorageLayout::current()?;
+        Ok(Self::path_for(&layout))
+    }
+
+    pub fn load(app_handle: &tauri::AppHandle) -> Result<Self, String> {
+        let path = Self::get_path(app_handle)?;
+        let mut state = match fs::read_to_string(&path) {
+            Ok(contents) => serde_json::from_str(&contents)
+                .map_err(|error| format!("Could not parse launcher state: {error}"))?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(error) => {
+                return Err(format!(
+                    "Could not read launcher state {}: {error}",
+                    path.display()
+                ))
             }
-        } else {
-            Self::default()
         };
         state.normalize();
-        let _ = state.save(app_handle);
-        state
+        state.save(app_handle)?;
+        Ok(state)
     }
 
     pub fn save(&self, app_handle: &tauri::AppHandle) -> Result<(), String> {
-        let path = Self::get_path(app_handle);
+        let path = Self::get_path(app_handle)?;
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "Could not create launcher state directory {}: {error}",
+                    parent.display()
+                )
+            })?;
         }
-        let contents = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        fs::write(path, contents).map_err(|e| e.to_string())?;
+        let contents = serde_json::to_string_pretty(self)
+            .map_err(|error| format!("Could not serialize launcher state: {error}"))?;
+        fs::write(&path, contents).map_err(|error| {
+            format!("Could not save launcher state {}: {error}", path.display())
+        })?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Language;
+    use super::{Language, LauncherState};
+    use crate::minecraft::versions::StorageLayout;
+    use std::path::PathBuf;
+
+    #[test]
+    fn launcher_state_file_is_under_launcher_metadata_root() {
+        let layout = StorageLayout::from_app_root(PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+
+        assert_eq!(
+            LauncherState::path_for(&layout),
+            layout.launcher_root().join("launcher_state.json")
+        );
+    }
 
     #[test]
     fn language_defaults_to_portuguese_in_saved_state() {
@@ -147,5 +166,45 @@ mod tests {
 
             assert_eq!(language, Language::default());
         }
+    }
+
+    #[test]
+    fn legacy_state_omits_removed_version_fields() {
+        let legacy: LauncherState = serde_json::from_value(serde_json::json!({
+            "scale": 1,
+            "language": "PORTUGUESE",
+            "theme": "LIGHT",
+            "memoryAmount": 4096,
+            "autoMemory": false,
+            "screenWidth": 1280,
+            "screenHeight": 720,
+            "fullscreen": true,
+            "jvmArguments": "-Xmx4G",
+            "javaPath": null,
+            "closeAfterLaunch": true,
+            "releaseFilter": true,
+            "moddedFilter": false,
+            "snapshotFilter": true,
+            "legacyFilter": false,
+            "selectedProfileId": "profile-id",
+            "selectedVersionId": "1.7.10"
+        }))
+        .unwrap();
+        let saved = serde_json::to_value(legacy).unwrap();
+
+        for key in [
+            "releaseFilter",
+            "moddedFilter",
+            "snapshotFilter",
+            "legacyFilter",
+            "selectedVersionId",
+        ] {
+            assert!(saved.get(key).is_none(), "legacy key {key} was serialized");
+        }
+        assert_eq!(saved["selectedProfileId"], "profile-id");
+        assert_eq!(saved["language"], "PORTUGUESE");
+        assert_eq!(saved["memoryAmount"], 4096);
+        assert_eq!(saved["screenWidth"], 1280);
+        assert_eq!(saved["screenHeight"], 720);
     }
 }

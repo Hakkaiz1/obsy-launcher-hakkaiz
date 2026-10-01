@@ -33,36 +33,14 @@
       "addProfileTitle": "Adicionar perfil",
       "deleteTooltip": "Excluir perfil"
     },
-    "version": {
-      "selectVersion": "Selecionar versão",
-      "noVersions": "Nenhuma versão disponível",
-      "openFolder": "Abrir pasta da instância",
-      "deleteInstance": "Excluir instância",
-      "confirmDelete": "Tem certeza de que deseja excluir esta instância? Esta ação não pode ser desfeita.",
-      "delete": "Excluir",
-      "searchPlaceholder": "Buscar versões...",
-      "noVersionsFound": "Nenhuma versão encontrada",
-      "installed": "Instâncias instaladas",
-      "releases": "Versões oficiais",
-      "snapshots": "Snapshots e outras",
-      "createInstance": "Criar instância",
-      "createInstanceTitle": "Criar nova instância",
-      "createInstanceDesc": "Escolha a versão do Minecraft e o carregador de mods para jogar em uma instância isolada.",
-      "instanceName": "Nome da instância",
-      "instanceNamePlaceholder": "Ex.: Fabric 1.21.4",
-      "minecraftVersion": "Versão do Minecraft",
-      "loader": "Carregador de mods",
-      "loaderFabric": "Fabric (recomendado)",
-      "loaderNeoForge": "NeoForge (Forge moderno)",
-      "loaderForge": "Forge (clássico)",
-      "loaderQuilt": "Quilt",
-      "loaderVanilla": "Vanilla (jogo sem modificações)",
-      "create": "Criar"
-    },
     "launch": {
       "play": "Jogar",
-      "download": "Baixar",
       "starting": "Preparando...",
+      "checking_technic": "Verificando atualizações do modpack...",
+      "downloading_technic": "Baixando modpack...",
+      "applying_technic": "Instalando atualização do modpack...",
+      "cached_offline": "Usando a instalação válida existente (offline)",
+      "ready": "Modpack atualizado",
       "downloading_java": "Baixando Java...",
       "extracting_java": "Extraindo Java...",
       "downloading_libraries": "Baixando bibliotecas...",
@@ -77,6 +55,21 @@
       "launching": "Iniciando Minecraft...",
       "success": "Concluído!",
       "running": "O jogo está em execução"
+    },
+    "technic": {
+      "title": "DBC Super",
+      "source": "Modpack oficial • Technic",
+      "version": "Versão {{version}}",
+      "minecraftVersion": "Minecraft {{version}}",
+      "status": {
+        "loading": "Carregando status do modpack...",
+        "checking": "Verificando instalação...",
+        "downloading": "Baixando atualização...",
+        "applying": "Instalando atualização...",
+        "offline": "Usando a última versão válida",
+        "ready": "Pronto para jogar",
+        "notInstalled": "Será instalado ao jogar"
+      }
     },
     "settings": {
       "title": "Configurações",

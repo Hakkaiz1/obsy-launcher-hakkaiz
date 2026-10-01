@@ -2,34 +2,87 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
-pub fn get_required_java_version(mc_version: &str) -> u32 {
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    let json_path = mc_dir
+#[cfg(test)]
+mod tests {
+    use crate::minecraft::versions::StorageLayout;
+    use std::path::PathBuf;
+
+    #[test]
+    fn managed_java_and_version_metadata_use_their_designated_roots() {
+        let layout = StorageLayout::from_app_root(PathBuf::from(
+            "C:/Users/test/AppData/Roaming/DBC Super Launcher",
+        ));
+
+        assert_eq!(
+            super::managed_java_dir_for(&layout, 8),
+            layout.java_root().join("8")
+        );
+        assert_eq!(
+            super::version_manifest_path(&layout, "1.7.10"),
+            layout
+                .technic_pack_root(crate::technic::TECHNIC_PACK_ID)
+                .join("runtime/versions/1.7.10/1.7.10.json")
+        );
+    }
+}
+
+fn managed_java_dir_for(
+    layout: &crate::minecraft::versions::StorageLayout,
+    version: u32,
+) -> PathBuf {
+    layout.java_root().join(version.to_string())
+}
+
+fn version_manifest_path(
+    layout: &crate::minecraft::versions::StorageLayout,
+    mc_version: &str,
+) -> PathBuf {
+    layout
+        .technic_pack_root(crate::technic::TECHNIC_PACK_ID)
+        .join("runtime")
         .join("versions")
         .join(mc_version)
-        .join(format!("{}.json", mc_version));
+        .join(format!("{mc_version}.json"))
+}
 
-    if let Ok(content) = std::fs::read_to_string(&json_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(java_version) = json.get("javaVersion") {
-                if let Some(major) = java_version.get("majorVersion") {
-                    if let Some(major_u32) = major.as_u64() {
-                        let ver = major_u32 as u32;
-                        if ver >= 25 {
-                            return 25;
-                        } else if ver >= 21 {
-                            return 21;
-                        } else if ver >= 17 {
-                            return 17;
-                        } else {
-                            return 8;
-                        }
-                    }
-                }
+fn required_java_version_for(
+    mc_version: &str,
+    layout: &crate::minecraft::versions::StorageLayout,
+) -> Result<u32, String> {
+    let json_path = version_manifest_path(layout, mc_version);
+    match fs::read_to_string(&json_path) {
+        Ok(content) => {
+            let json = serde_json::from_str::<serde_json::Value>(&content)
+                .map_err(|error| format!("Could not parse Minecraft version profile: {error}"))?;
+            if let Some(major) = json
+                .get("javaVersion")
+                .and_then(|version| version.get("majorVersion"))
+                .and_then(serde_json::Value::as_u64)
+            {
+                let major = major as u32;
+                return Ok(if major >= 25 {
+                    25
+                } else if major >= 21 {
+                    21
+                } else if major >= 17 {
+                    17
+                } else {
+                    8
+                });
             }
         }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "Could not read Minecraft version profile {}: {error}",
+                json_path.display()
+            ))
+        }
     }
+    Ok(fallback_java_version(mc_version))
+}
 
+fn fallback_java_version(mc_version: &str) -> u32 {
     let (major, minor, patch) = crate::open_launcher::utils::parse_mc_version(mc_version);
     if major >= 26 || (major == 1 && minor >= 26) {
         25
@@ -42,10 +95,22 @@ pub fn get_required_java_version(mc_version: &str) -> u32 {
     }
 }
 
+pub fn get_required_java_version(mc_version: &str) -> u32 {
+    match crate::minecraft::versions::StorageLayout::current()
+        .and_then(|layout| required_java_version_for(mc_version, &layout))
+    {
+        Ok(version) => version,
+        Err(error) => {
+            eprintln!("[JAVA] Could not inspect Minecraft Java requirement: {error}");
+            fallback_java_version(mc_version)
+        }
+    }
+}
+
 pub async fn download_java_if_needed(mc_version: &str, app: &AppHandle) -> Result<String, String> {
-    let version = get_required_java_version(mc_version);
-    let mc_dir = super::versions::get_minecraft_dir();
-    let jre_dir = mc_dir.join("jre").join(version.to_string());
+    let layout = crate::minecraft::versions::StorageLayout::current()?;
+    let version = required_java_version_for(mc_version, &layout)?;
+    let jre_dir = managed_java_dir_for(&layout, version);
 
     let java_executable = if cfg!(target_os = "windows") {
         "java.exe"
@@ -53,37 +118,68 @@ pub async fn download_java_if_needed(mc_version: &str, app: &AppHandle) -> Resul
         "java"
     };
 
-    let find_extracted_java = |dir: &Path| -> Option<PathBuf> {
+    let find_extracted_java = |dir: &Path| -> Result<Option<PathBuf>, String> {
         let mut paths_to_check = vec![dir.to_path_buf()];
         while let Some(current) = paths_to_check.pop() {
-            if let Ok(entries) = fs::read_dir(&current) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        paths_to_check.push(path);
-                    } else if path.is_file()
-                        && path.file_name().unwrap_or_default() == java_executable
-                    {
-                        return Some(path);
-                    }
+            let entries = match fs::read_dir(&current) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "Could not inspect managed Java directory {}: {error}",
+                        current.display()
+                    ))
+                }
+            };
+            for entry in entries {
+                let entry = entry
+                    .map_err(|error| format!("Could not inspect managed Java entry: {error}"))?;
+                let path = entry.path();
+                let file_type = entry
+                    .file_type()
+                    .map_err(|error| format!("Could not inspect managed Java entry: {error}"))?;
+                if file_type.is_dir() {
+                    paths_to_check.push(path);
+                } else if file_type.is_file()
+                    && path.file_name().unwrap_or_default() == java_executable
+                {
+                    return Ok(Some(path));
                 }
             }
         }
-        None
+        Ok(None)
     };
 
-    if jre_dir.exists() {
-        if let Some(path) = find_extracted_java(&jre_dir) {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Ok(metadata) = fs::metadata(&path) {
+    match fs::symlink_metadata(&jre_dir) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(format!(
+                "Managed Java path is not a safe directory: {}",
+                jre_dir.display()
+            ))
+        }
+        Ok(_) => {
+            if let Some(path) = find_extracted_java(&jre_dir)? {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let metadata = fs::metadata(&path).map_err(|error| {
+                        format!("Could not inspect managed Java executable: {error}")
+                    })?;
                     let mut perms = metadata.permissions();
                     perms.set_mode(0o755);
-                    let _ = fs::set_permissions(&path, perms);
+                    fs::set_permissions(&path, perms).map_err(|error| {
+                        format!("Could not make managed Java executable: {error}")
+                    })?;
                 }
+                return Ok(path.to_string_lossy().to_string());
             }
-            return Ok(path.to_string_lossy().to_string());
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "Could not inspect managed Java path {}: {error}",
+                jre_dir.display()
+            ))
         }
     }
 
@@ -197,7 +293,7 @@ pub async fn download_java_if_needed(mc_version: &str, app: &AppHandle) -> Resul
         }
     }
 
-    if let Some(path) = find_extracted_java(&jre_dir) {
+    if let Some(path) = find_extracted_java(&jre_dir)? {
         Ok(path.to_string_lossy().to_string())
     } else {
         Err("Failed to find java executable after extraction".to_string())
