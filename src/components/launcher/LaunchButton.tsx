@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Play, Download } from "lucide-react";
+import { Play } from "lucide-react";
 import { useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useLauncherStore } from "@/state";
@@ -76,18 +76,21 @@ function launchReducer(state: LaunchState, action: LaunchAction): LaunchState {
   }
 }
 
-export const LaunchButton = () => {
-  const { state, versions } = useLauncherStore();
+interface LaunchButtonProps {
+  onLaunchStart: () => void;
+  onLaunchError: (error: string) => void;
+}
+
+export const LaunchButton = ({
+  onLaunchStart,
+  onLaunchError,
+}: LaunchButtonProps) => {
+  const { state } = useLauncherStore();
   const { t } = useTranslation();
 
   const [launchState, dispatch] = useReducer(launchReducer, initialLaunchState);
   const { isLaunching, isRunning, launchStatus, launchProgress, launchDetail } =
     launchState;
-
-  const selectedVersion = versions.find(
-    (v) => v.id === state?.selectedVersionId,
-  );
-  const isDownloaded = selectedVersion?.isLocal ?? false;
 
   useEffect(() => {
     invoke<boolean>("is_game_running")
@@ -125,24 +128,19 @@ export const LaunchButton = () => {
   }, []);
 
   const handleLaunch = async () => {
-    if (
-      !state?.selectedProfileId ||
-      !state?.selectedVersionId ||
-      isLaunching ||
-      isRunning
-    )
-      return;
+    if (!state?.selectedProfileId || isLaunching || isRunning) return;
 
+    onLaunchStart();
     dispatch({ type: "START_LAUNCH" });
 
     try {
       await invoke("launch_game", {
         profileId: state.selectedProfileId,
-        versionId: state.selectedVersionId,
+        versionId: "technic-1132904",
       });
-      useLauncherStore.getState().fetchVersions();
     } catch (error) {
       console.error(error);
+      onLaunchError(String(error));
       alert(`Falha ao iniciar o jogo: ${error}`);
       dispatch({ type: "ERROR" });
     }
@@ -164,12 +162,7 @@ export const LaunchButton = () => {
               ? "cursor-not-allowed border border-emerald-500/30 bg-emerald-600/20 text-emerald-400 opacity-90"
               : "bg-gradient-to-r from-amber-300 to-amber-500 text-violet-950 shadow-amber-500/20 hover:from-amber-200 hover:to-amber-400 hover:shadow-xl"
           }`}
-          disabled={
-            !state.selectedProfileId ||
-            !state.selectedVersionId ||
-            isLaunching ||
-            isRunning
-          }
+          disabled={!state.selectedProfileId || isLaunching || isRunning}
           onClick={handleLaunch}
         >
           <AnimatePresence mode="wait">
@@ -210,19 +203,15 @@ export const LaunchButton = () => {
               </m.div>
             ) : (
               <m.div
-                key={isDownloaded ? "play" : "download"}
+                key="play"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 transition={{ duration: 0.2 }}
                 className="flex items-center"
               >
-                {isDownloaded ? (
-                  <Play className="mr-2 h-5 w-5 fill-current" />
-                ) : (
-                  <Download className="mr-2 h-5 w-5" />
-                )}
-                {isDownloaded ? t("launch.play") : t("launch.download")}
+                <Play className="mr-2 h-5 w-5 fill-current" />
+                {t("launch.play")}
               </m.div>
             )}
           </AnimatePresence>

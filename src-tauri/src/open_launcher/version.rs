@@ -49,6 +49,29 @@ pub(crate) struct InternalVersion {
     pub quilt: QuiltVersion,
 }
 
+fn should_skip_legacy_forge_installer(
+    forge_enabled: bool,
+    forge_legacy: bool,
+    modded_profile_loaded: bool,
+    universal_jar_exists: bool,
+) -> bool {
+    forge_enabled && forge_legacy && modded_profile_loaded && universal_jar_exists
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_skip_legacy_forge_installer;
+
+    #[test]
+    fn legacy_forge_uses_verified_preinstalled_profile_and_jar() {
+        assert!(should_skip_legacy_forge_installer(true, true, true, true));
+        assert!(!should_skip_legacy_forge_installer(false, true, true, true));
+        assert!(!should_skip_legacy_forge_installer(true, false, true, true));
+        assert!(!should_skip_legacy_forge_installer(true, true, false, true));
+        assert!(!should_skip_legacy_forge_installer(true, true, true, false));
+    }
+}
+
 impl InternalVersion {
     pub async fn new(
         game_dir: PathBuf,
@@ -263,6 +286,20 @@ impl Launcher {
     }
 
     async fn install_modded_versions(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let preinstalled_forge_jar = self
+            .version
+            .forge
+            .version_path
+            .join(format!("{}.jar", self.version.forge.combined));
+        if should_skip_legacy_forge_installer(
+            self.version.forge.enabled,
+            self.version.forge.legacy,
+            self.version.modded_profile.is_object(),
+            preinstalled_forge_jar.is_file(),
+        ) {
+            return Ok(());
+        }
+
         let client = super::utils::get_http_client();
         if self.version.forge.enabled || self.version.neoforge.enabled {
             let forge_installer_path = if self.version.forge.enabled {

@@ -146,12 +146,7 @@ async function main() {
                 jvmArguments: "-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions",
                 javaPath: "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin/java",
                 closeAfterLaunch: false,
-                releaseFilter: true,
-                moddedFilter: true,
-                snapshotFilter: false,
-                legacyFilter: false,
-                selectedProfileId: "prof-1",
-                selectedVersionId: "1.21.4 (Fabric)"
+                selectedProfileId: "prof-1"
               };
             }
             if (cmd === 'get_profiles') {
@@ -172,14 +167,14 @@ async function main() {
                 }
               ];
             }
-            if (cmd === 'get_versions') {
-              return [
-                { id: "1.21.4 (Fabric)", type: "modded", isLocal: true, releaseTime: "2024-12-03T10:00:00Z" },
-                { id: "1.21.4", type: "release", isLocal: true, releaseTime: "2024-12-03T10:00:00Z" },
-                { id: "1.20.1 (NeoForge)", type: "modded", isLocal: true, releaseTime: "2023-06-12T10:00:00Z" },
-                { id: "1.20.4", type: "release", isLocal: true, releaseTime: "2023-12-07T10:00:00Z" },
-                { id: "1.8.9 (OptiFine)", type: "modded", isLocal: true, releaseTime: "2015-12-09T10:00:00Z" }
-              ];
+            if (cmd === 'get_technic_pack_status') {
+              return {
+                pack_version: "10.8",
+                minecraft_version: "1.7.10",
+                forge_version: "10.13.4.1558",
+                pack_id: 1132904,
+                managed_files: []
+              };
             }
             if (cmd === 'get_startup_time') return 142;
             if (cmd === 'get_app_memory_usage') return 38;

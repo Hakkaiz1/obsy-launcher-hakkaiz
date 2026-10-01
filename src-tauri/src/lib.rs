@@ -4,10 +4,10 @@ pub mod minecraft;
 pub mod msa;
 pub mod open_launcher;
 pub mod state;
+pub mod technic;
 pub mod wardrobe;
 
 use crate::auth::{Profile, ProfileStore};
-use crate::minecraft::models::MinecraftVersion;
 use crate::state::LauncherState;
 use crate::wardrobe::WardrobeStore;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -116,18 +116,6 @@ pub struct AppState {
     pub is_game_running: std::sync::atomic::AtomicBool,
 }
 
-pub fn validate_safe_id(id: &str) -> Result<(), String> {
-    if id.is_empty()
-        || id.contains("..")
-        || id.contains('/')
-        || id.contains('\\')
-        || id.chars().any(|c| c.is_control())
-    {
-        return Err("Invalid identifier".to_string());
-    }
-    Ok(())
-}
-
 pub fn is_safe_jvm_arg(arg: &str) -> bool {
     let lower = arg.to_lowercase();
     let dangerous_prefixes = [
@@ -218,56 +206,6 @@ fn remove_profile(
     Ok(profiles)
 }
 
-#[tauri::command]
-async fn get_versions(state: State<'_, AppState>) -> Result<Vec<MinecraftVersion>, String> {
-    let mut remote_versions = crate::minecraft::versions::get_mojang_versions()
-        .await
-        .unwrap_or_default();
-    let local_versions = crate::minecraft::versions::get_local_versions().unwrap_or_default();
-
-    let current_state = state.launcher_state.lock().map_err(|e| e.to_string())?;
-
-    let mut custom_locals = Vec::new();
-    for local in local_versions {
-        if let Some(existing) = remote_versions.iter_mut().find(|v| v.id == local.id) {
-            existing.is_local = true;
-        } else {
-            custom_locals.push(local);
-        }
-    }
-
-    remote_versions.retain(|v| {
-        if v.is_local {
-            return true;
-        }
-        match v.r#type.as_str() {
-            "release" => current_state.release_filter,
-            "snapshot" => current_state.snapshot_filter,
-            "old_beta" | "old_alpha" => current_state.legacy_filter,
-            _ => true,
-        }
-    });
-
-    // Partition so all local versions / installed instances appear at the very TOP
-    let mut final_list = custom_locals;
-    let (mut local_downloaded, remote_only): (Vec<_>, Vec<_>) =
-        remote_versions.into_iter().partition(|v| v.is_local);
-
-    final_list.append(&mut local_downloaded);
-    final_list.extend(remote_only);
-
-    Ok(final_list)
-}
-
-#[tauri::command]
-fn select_version(id: String, state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
-    validate_safe_id(&id)?;
-    let mut current_state = state.launcher_state.lock().map_err(|e| e.to_string())?;
-    current_state.selected_version_id = Some(id);
-    current_state.save(&app)?;
-    Ok(())
-}
-
 #[derive(Clone, serde::Serialize)]
 struct LaunchProgressPayload {
     status: String,
@@ -283,12 +221,18 @@ fn is_game_running(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
+fn get_technic_pack_status() -> Result<Option<technic::InstalledPackManifest>, String> {
+    technic::get_pack_status()
+}
+
+#[tauri::command]
 async fn launch_game(
     profile_id: String,
     version_id: String,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
+    technic::validate_launch_id(&version_id)?;
     if state
         .is_game_running
         .compare_exchange(
@@ -317,7 +261,7 @@ async fn launch_game_inner(
     state: &State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    validate_safe_id(&version_id)?;
+    technic::validate_launch_id(&version_id)?;
     let (launcher_state, profile) = {
         let l_state = state
             .launcher_state
@@ -331,6 +275,7 @@ async fn launch_game_inner(
             .ok_or("Profile not found")?;
         (l_state, profile)
     };
+    let pack_manifest = technic::ensure_pack_current(&app).await?;
 
     let auth = if profile.microsoft {
         open_launcher::auth::Auth::new(
@@ -344,64 +289,17 @@ async fn launch_game_inner(
         open_launcher::auth::OfflineAuth::new(&profile.username)
     };
 
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    let mc_dir_str = mc_dir
+    let mc_base_version = pack_manifest.minecraft_version.clone();
+    let loader = Some("forge".to_string());
+    let loader_version = Some(pack_manifest.forge_version.clone());
+    let runtime_dir = technic::managed_runtime_root();
+    let runtime_dir_str = runtime_dir
         .to_str()
         .ok_or("Invalid minecraft dir path")?
         .to_string();
-
-    // Resolve base vanilla version and mod loader
-    let (mc_base_version, loader, loader_version) = {
-        let instance_json_path = mc_dir
-            .join("versions")
-            .join(&version_id)
-            .join(format!("{}.json", version_id));
-
-        let mut base = version_id.clone();
-        let mut ldr = None;
-        let mut ldr_ver = None;
-
-        if instance_json_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&instance_json_path) {
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(inherits) = val.get("inheritsFrom").and_then(|v| v.as_str()) {
-                        base = inherits.to_string();
-                    }
-                    if let Some(l) = val.get("loader").and_then(|v| v.as_str()) {
-                        ldr = Some(l.to_string());
-                    }
-                    if let Some(lv) = val.get("loaderVersion").and_then(|v| v.as_str()) {
-                        ldr_ver = Some(lv.to_string());
-                    }
-                }
-            }
-        }
-
-        if ldr_ver.as_deref() == Some("0.16.10") {
-            ldr_ver = Some("0.19.3".to_string());
-        }
-
-        if base.contains('-') {
-            let parts: Vec<&str> = base.split('-').collect();
-            for part in parts.iter().rev() {
-                if part.starts_with("1.") || part.starts_with("26.") || part.starts_with("25.") {
-                    base = part.to_string();
-                    break;
-                }
-            }
-        }
-
-        if ldr.is_none()
-            && (version_id.contains("fabric")
-                || version_id.contains("optimized")
-                || version_id.contains('-'))
-        {
-            ldr = Some("fabric".to_string());
-            ldr_ver = Some("0.19.3".to_string());
-        }
-
-        (base, ldr, ldr_ver)
-    };
+    let game_dir = technic::managed_game_root();
+    std::fs::create_dir_all(&game_dir)
+        .map_err(|error| format!("Could not create DBC Super game directory: {error}"))?;
 
     let java_path = if let Some(path) = &launcher_state.java_path {
         if path.trim().is_empty() {
@@ -424,7 +322,7 @@ async fn launch_game_inner(
     };
 
     let mut launcher = open_launcher::Launcher::new(
-        &mc_dir_str,
+        &runtime_dir_str,
         &java_path,
         open_launcher::version::Version {
             minecraft_version: mc_base_version.clone(),
@@ -434,15 +332,7 @@ async fn launch_game_inner(
     )
     .await;
 
-    let mut iso_dir = mc_dir.clone();
-    iso_dir.push("instances");
-    iso_dir.push(&version_id);
-
-    if !iso_dir.exists() {
-        let _ = std::fs::create_dir_all(&iso_dir);
-    }
-
-    launcher.set_execution_directory(iso_dir);
+    launcher.set_execution_directory(game_dir);
 
     launcher.auth(auth);
     launcher.custom_resolution(
@@ -500,9 +390,9 @@ async fn launch_game_inner(
             };
 
             let (base, scale) = match prog.task.as_str() {
-                "checking_assets" | "downloading_assets" => (0.3, 0.3),
-                "checking_libraries" | "downloading_libraries" | "post_processing" => (0.6, 0.3),
-                "checking_natives" | "extracting_natives" => (0.9, 0.1),
+                "checking_assets" | "downloading_assets" => (0.6, 0.2),
+                "checking_libraries" | "downloading_libraries" | "post_processing" => (0.8, 0.15),
+                "checking_natives" | "extracting_natives" => (0.95, 0.05),
                 _ => (0.0, 1.0),
             };
 
@@ -544,7 +434,7 @@ async fn launch_game_inner(
         "launch-progress",
         LaunchProgressPayload {
             status: "installing_version".to_string(),
-            progress: 0.1,
+            progress: 0.6,
             detail: None,
         },
     )
@@ -558,7 +448,7 @@ async fn launch_game_inner(
         "launch-progress",
         LaunchProgressPayload {
             status: "installing_assets".to_string(),
-            progress: 0.3,
+            progress: 0.6,
             detail: None,
         },
     )
@@ -569,7 +459,7 @@ async fn launch_game_inner(
         "launch-progress",
         LaunchProgressPayload {
             status: "installing_libraries".to_string(),
-            progress: 0.6,
+            progress: 0.8,
             detail: None,
         },
     )
@@ -998,292 +888,6 @@ async fn set_active_cape(
 }
 
 #[tauri::command]
-fn open_version_folder(version_id: String, app: tauri::AppHandle) -> Result<(), String> {
-    validate_safe_id(&version_id)?;
-    use tauri_plugin_opener::OpenerExt;
-
-    let mut mc_dir = crate::minecraft::versions::get_minecraft_dir();
-
-    mc_dir.push("instances");
-    mc_dir.push(&version_id);
-
-    if !mc_dir.exists() {
-        let _ = std::fs::create_dir_all(&mc_dir);
-    }
-
-    app.opener()
-        .open_path(mc_dir.to_string_lossy().to_string(), None::<&str>)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-fn delete_instance(
-    version_id: String,
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    validate_safe_id(&version_id)?;
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-
-    let instance_dir = mc_dir.join("instances").join(&version_id);
-    if instance_dir.exists() {
-        let _ = std::fs::remove_dir_all(&instance_dir);
-    }
-
-    let version_dir = mc_dir.join("versions").join(&version_id);
-    if version_dir.exists() {
-        let _ = std::fs::remove_dir_all(&version_dir);
-    }
-
-    let natives_dir = mc_dir
-        .join("versions")
-        .join(format!("{}-natives", version_id));
-    if natives_dir.exists() {
-        let _ = std::fs::remove_dir_all(&natives_dir);
-    }
-
-    let mut current_state = state.launcher_state.lock().map_err(|e| e.to_string())?;
-    if current_state.selected_version_id.as_ref() == Some(&version_id) {
-        current_state.selected_version_id = None;
-        current_state.save(&app)?;
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn create_instance(
-    id: String,
-    base_version: String,
-    loader: Option<String>,
-    loader_version: Option<String>,
-    files: Option<Vec<(String, Vec<u8>)>>,
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<String, String> {
-    validate_safe_id(&id)?;
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-
-    let mut final_id = id.clone();
-    let mut counter = 2;
-    while mc_dir.join("versions").join(&final_id).exists()
-        || mc_dir.join("instances").join(&final_id).exists()
-    {
-        final_id = format!("{}-{}", id, counter);
-        counter += 1;
-    }
-
-    let version_dir = mc_dir.join("versions").join(&final_id);
-    std::fs::create_dir_all(&version_dir).map_err(|e| e.to_string())?;
-
-    let selected_loader = loader.as_deref().unwrap_or("fabric");
-    let selected_loader_version = loader_version.unwrap_or_else(|| {
-        if selected_loader == "fabric" {
-            "0.19.3".to_string()
-        } else {
-            "latest".to_string()
-        }
-    });
-
-    let version_json_path = version_dir.join(format!("{}.json", final_id));
-    let minimal_json = if selected_loader == "vanilla" {
-        serde_json::json!({
-            "id": final_id,
-            "inheritsFrom": base_version,
-            "type": "custom"
-        })
-    } else {
-        serde_json::json!({
-            "id": final_id,
-            "inheritsFrom": base_version,
-            "type": "custom",
-            "loader": selected_loader,
-            "loaderVersion": selected_loader_version
-        })
-    };
-    std::fs::write(&version_json_path, minimal_json.to_string()).map_err(|e| e.to_string())?;
-
-    let instance_dir = mc_dir.join("instances").join(&final_id);
-    let mods_dir = instance_dir.join("mods");
-    std::fs::create_dir_all(&mods_dir).map_err(|e| e.to_string())?;
-
-    let instance_json_path = instance_dir.join("instance.json");
-    let _ = std::fs::write(&instance_json_path, minimal_json.to_string());
-
-    if let Some(file_list) = files {
-        for (filename, bytes) in file_list {
-            let file_path = mods_dir.join(filename);
-            let _ = std::fs::write(file_path, bytes);
-        }
-    }
-
-    let mut current_state = state.launcher_state.lock().map_err(|e| e.to_string())?;
-    current_state.selected_version_id = Some(final_id.clone());
-    current_state.save(&app)?;
-
-    Ok(final_id)
-}
-
-#[tauri::command]
-async fn download_instance_file(
-    instance_id: String,
-    subpath: String,
-    url: String,
-) -> Result<String, String> {
-    validate_safe_id(&instance_id)?;
-    if subpath.contains("..") || subpath.starts_with('/') || subpath.starts_with('\\') {
-        return Err("Invalid subpath (directory traversal forbidden)".to_string());
-    }
-
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    let instance_dir = mc_dir.join("instances").join(&instance_id);
-    let dest_path = instance_dir.join(&subpath);
-
-    if let Some(parent) = dest_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    // 1. Check central deduplication CAS cache in obsy_objects by URL hash
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(url.as_bytes());
-    let url_hash = format!("{:x}", hasher.finalize());
-
-    let cache_dir = mc_dir.join("obsy_objects").join(&url_hash[0..2]);
-    let cache_file = cache_dir.join(&url_hash);
-
-    if cache_file.exists() {
-        if crate::minecraft::dedup::link_or_copy(&cache_file, &dest_path).is_ok() {
-            println!(
-                "[DEDUP] Reused cached instance file from obsy_objects for: {}",
-                subpath
-            );
-            return Ok(subpath);
-        }
-    }
-
-    // 2. Download from network if not in cache
-    let client = crate::open_launcher::utils::get_http_client();
-    let resp = client
-        .get(&url)
-        .header(
-            "User-Agent",
-            concat!("ObsyLauncher/", env!("CARGO_PKG_VERSION")),
-        )
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download file: {}", e))?;
-
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read bytes: {}", e))?;
-
-    // 3. Save to central CAS cache and hardlink to destination
-    let _ = std::fs::create_dir_all(&cache_dir);
-    let _ = std::fs::write(&cache_file, &bytes);
-    let _ = crate::minecraft::dedup::link_or_copy(&cache_file, &dest_path);
-
-    Ok(subpath)
-}
-
-#[tauri::command]
-async fn read_instance_zip_entry(
-    instance_id: String,
-    zip_subpath: String,
-    entry_path: String,
-) -> Result<String, String> {
-    validate_safe_id(&instance_id)?;
-    if zip_subpath.contains("..") {
-        return Err("Invalid zip_subpath".to_string());
-    }
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    let zip_full_path = mc_dir
-        .join("instances")
-        .join(&instance_id)
-        .join(&zip_subpath);
-
-    let file = std::fs::File::open(&zip_full_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    let mut entry = archive.by_name(&entry_path).map_err(|e| e.to_string())?;
-
-    use std::io::Read;
-    let mut content = String::new();
-    entry
-        .read_to_string(&mut content)
-        .map_err(|e| e.to_string())?;
-    Ok(content)
-}
-
-#[tauri::command]
-async fn extract_instance_zip_folder(
-    instance_id: String,
-    zip_subpath: String,
-    folder_prefix: String,
-    dest_subpath: String,
-) -> Result<(), String> {
-    validate_safe_id(&instance_id)?;
-    if zip_subpath.contains("..") || dest_subpath.contains("..") {
-        return Err("Invalid subpath".to_string());
-    }
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    let instance_dir = mc_dir.join("instances").join(&instance_id);
-    let zip_full_path = instance_dir.join(&zip_subpath);
-
-    let file = std::fs::File::open(&zip_full_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-
-    let prefix = if folder_prefix.ends_with('/') || folder_prefix.is_empty() {
-        folder_prefix
-    } else {
-        format!("{}/", folder_prefix)
-    };
-
-    let target_base = if dest_subpath.is_empty() {
-        instance_dir.clone()
-    } else {
-        crate::fs_utils::sanitize_path(&instance_dir, std::path::Path::new(&dest_subpath))?
-    };
-
-    for i in 0..archive.len() {
-        if let Ok(mut entry) = archive.by_index(i) {
-            let name = entry.name().to_string();
-            if name.starts_with(&prefix) && !name.ends_with('/') {
-                let rel = name.strip_prefix(&prefix).unwrap_or(&name);
-                if let Ok(target) = crate::fs_utils::safe_zip_extract_path(&target_base, rel) {
-                    if let Some(parent) = target.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    if let Ok(mut out) = std::fs::File::create(&target) {
-                        use std::io::copy;
-                        let _ = copy(&mut entry, &mut out);
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn delete_instance_file(instance_id: String, subpath: String) -> Result<(), String> {
-    validate_safe_id(&instance_id)?;
-    if subpath.contains("..") {
-        return Err("Invalid subpath".to_string());
-    }
-    let mc_dir = crate::minecraft::versions::get_minecraft_dir();
-    let file_path = mc_dir.join("instances").join(&instance_id).join(&subpath);
-    if file_path.is_file() {
-        let _ = std::fs::remove_file(file_path);
-    } else if file_path.is_dir() {
-        let _ = std::fs::remove_dir_all(file_path);
-    }
-    Ok(())
-}
-
-#[tauri::command]
 fn get_playtime_summary(app: AppHandle) -> Result<minecraft::playtime::PlaytimeSummary, String> {
     Ok(minecraft::playtime::get_summary(&app))
 }
@@ -1371,10 +975,9 @@ pub fn run() {
             add_offline_profile,
             select_profile,
             remove_profile,
-            get_versions,
-            select_version,
             launch_game,
             is_game_running,
+            get_technic_pack_status,
             start_msa_auth,
             poll_msa_auth,
             get_wardrobe,
@@ -1385,13 +988,6 @@ pub fn run() {
             refresh_profile_token,
             get_account_capes,
             set_active_cape,
-            open_version_folder,
-            delete_instance,
-            create_instance,
-            download_instance_file,
-            read_instance_zip_entry,
-            extract_instance_zip_folder,
-            delete_instance_file,
             get_startup_time,
             get_app_memory_usage,
             get_playtime_summary,
@@ -1411,19 +1007,6 @@ mod tests {
         let mem = get_app_memory_usage();
         println!("\n>>> ACTUAL MEASURED MEMORY: {} MB <<<\n", mem);
         assert!(mem > 0);
-    }
-
-    #[test]
-    fn test_validate_safe_id() {
-        assert!(validate_safe_id("valid-instance-1").is_ok());
-        assert!(validate_safe_id("valid_profile_1").is_ok());
-        assert!(validate_safe_id("1.20.4").is_ok());
-
-        assert!(validate_safe_id("").is_err());
-        assert!(validate_safe_id("../evil").is_err());
-        assert!(validate_safe_id("evil/path").is_err());
-        assert!(validate_safe_id("evil\\path").is_err());
-        assert!(validate_safe_id("profile\0null").is_err());
     }
 
     #[test]

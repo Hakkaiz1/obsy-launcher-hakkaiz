@@ -7,7 +7,7 @@ import { Header } from "./components/launcher/Header";
 import { addGameLog } from "./lib/logger";
 import { LaunchButton } from "./components/launcher/LaunchButton";
 import { ProfileSelector } from "./components/launcher/ProfileSelector";
-import { VersionSelector } from "./components/launcher/VersionSelector";
+import { TechnicPackStatus } from "./components/launcher/TechnicPackStatus";
 import { Onboarding } from "./components/launcher/Onboarding";
 import "./i18n";
 import { useLauncherStore } from "./state";
@@ -24,7 +24,6 @@ const App = () => {
     state,
     fetchState,
     fetchProfiles,
-    fetchVersions,
     fetchStartupTime,
     fetchAppMemory,
     refreshProfileSkin,
@@ -32,6 +31,7 @@ const App = () => {
   } = useLauncherStore();
   const { t, i18n } = useTranslation();
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [technicError, setTechnicError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem("hasCompletedOnboarding") !== "true";
   });
@@ -89,7 +89,6 @@ const App = () => {
     fetchAppMemory();
     fetchState();
     fetchProfiles();
-    fetchVersions();
 
     const memInterval = setInterval(() => {
       fetchAppMemory();
@@ -99,14 +98,7 @@ const App = () => {
       isMounted = false;
       clearInterval(memInterval);
     };
-  }, [
-    t,
-    fetchState,
-    fetchProfiles,
-    fetchVersions,
-    fetchStartupTime,
-    fetchAppMemory,
-  ]);
+  }, [t, fetchState, fetchProfiles, fetchStartupTime, fetchAppMemory]);
 
   useEffect(() => {
     const unlistenLog = listen<string>("minecraft-log", (event) => {
@@ -170,8 +162,11 @@ const App = () => {
                     )}
                     <div className="relative z-10 flex h-full flex-col gap-6">
                       <ProfileSelector />
-                      <VersionSelector />
-                      <LaunchButton />
+                      <TechnicPackStatus error={technicError} />
+                      <LaunchButton
+                        onLaunchStart={() => setTechnicError(null)}
+                        onLaunchError={setTechnicError}
+                      />
                     </div>
                   </div>
                 </m.div>

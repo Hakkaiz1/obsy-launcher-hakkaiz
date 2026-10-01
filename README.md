@@ -24,8 +24,8 @@
 
 - ⚡ **Ultra-Fast & Resource-Efficient**: Starts in under **400 ms** with minimal RAM usage (~**40 MB** idle) thanks to the native Rust + Tauri v2 core.
 - 🎨 **Sleek Modern Interface**: Responsive glassmorphic UI built with React 19, Tailwind CSS, Base UI, and smooth Framer Motion micro-animations.
-- 🎮 **Universal Account Management**: Instant switching between Microsoft MSA and Offline accounts, with custom skin previews and cape wardrobe support.
-- 🚀 **Smart Instance & Version Control**: Filter and launch Vanilla releases, snapshots, Fabric, Forge, NeoForge, and Quilt with isolated directories.
+- 🎮 **Account Management**: Switch between Microsoft and Offline profiles, with custom skin previews and cape wardrobe support.
+- 🚀 **DBC Super Technic Pack**: Installs and updates the server's official modpack automatically through the Technic API before launching.
 - 🛠️ **Power-User Performance Tweaks**: One-click Aikar's garbage collection flags, automatic RAM allocation detection, customizable JVM arguments, and live streaming console logs.
 - 🇧🇷 **Interface em Português**: Interface do launcher localizada para português brasileiro.
 
@@ -62,7 +62,7 @@ Color-coded logs and diagnostic output streamed straight from the Minecraft engi
    - **Windows:** `.exe` (Installer) or `.msi`
    - **macOS:** `.dmg` (Apple Silicon & Intel)
    - **Linux:** `.AppImage` or `.deb`
-3. Launch Obsy, select your profile, and enjoy Minecraft!
+3. Launch Obsy, select your profile, and the DBC Super Technic modpack will be installed or updated automatically before the game starts.
 
 ---
 
@@ -135,8 +135,8 @@ npm run tauri build
 
 - ⚡ **Максимальная производительность**: Время холодного запуска менее **400 мс**, потребление оперативной памяти в фоне ~**40 МБ** благодаря связке Rust и Tauri v2.
 - 🎨 **Современный стеклянный интерфейс**: UI на React 19 и Tailwind CSS с плавной анимацией на Framer Motion.
-- 🎮 **Удобное управление аккаунтами**: Мгновенное переключение между аккаунтами Microsoft (MSA) и оффлайн-профилями, синхронизация скинов и плащей.
-- 🚀 **Поддержка любых версий и модпаков**: Запуск официальных релизов, снапшотов, Fabric, Forge, NeoForge и Quilt в изолированных директориях.
+- 🎮 **Управление аккаунтами**: Переключение между аккаунтами Microsoft (MSA) и оффлайн-профилями, синхронизация скинов и плащей.
+- 🚀 **DBC Super Technic Modpack**: Автоматическая установка и обновление официального модпака сервера через Technic API перед запуском.
 - 🛠️ **Тонкая оптимизация**: Применение флагов сборщика мусора Aikar's Flags в один клик, автоопределение памяти, кастомные аргументы JVM и встроенная консоль с логами.
 - 🇧🇷 **Интерфейс на португальском языке**: Интерфейс лаунчера переведен на бразильский португальский.
 

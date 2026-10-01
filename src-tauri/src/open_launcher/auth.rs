@@ -46,7 +46,9 @@ impl OfflineAuth {
     /// # Arguments
     /// * `username` - The username of the user
     /// # Example
-    /// ```
+    /// ```no_run
+    /// use obsy_launcher_lib::open_launcher::auth::OfflineAuth;
+    ///
     /// let auth = OfflineAuth::new("Player");
     /// ```
     pub fn new(username: &str) -> Auth {
