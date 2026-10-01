@@ -1,6 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-const FEED_URL: &str = "https://raw.githubusercontent.com/Hakkaiz1/obsy-launcher-hakkaiz/main/public/announcements.json";
+const FEED_URL: &str =
+    "https://api.github.com/repos/Hakkaiz1/obsy-launcher-hakkaiz/contents/public/announcements.json";
+
+fn announcement_feed_url(cache_buster: u128) -> Result<reqwest::Url, String> {
+    let mut url = reqwest::Url::parse(FEED_URL)
+        .map_err(|error| format!("Announcements feed URL is invalid: {error}"))?;
+    url.query_pairs_mut()
+        .append_pair("ref", "main")
+        .append_pair("refresh", &cache_buster.to_string());
+    Ok(url)
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,7 +77,15 @@ pub fn parse_feed(json: &str) -> Result<AnnouncementFeed, String> {
 
 #[tauri::command]
 pub async fn fetch_announcements() -> Result<AnnouncementFeed, String> {
-    let response = reqwest::get(FEED_URL)
+    let cache_buster = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("Could not determine current time: {error}"))?
+        .as_millis();
+    let response = reqwest::Client::new()
+        .get(announcement_feed_url(cache_buster)?)
+        .header(reqwest::header::ACCEPT, "application/vnd.github.raw+json")
+        .header(reqwest::header::CACHE_CONTROL, "no-cache")
+        .send()
         .await
         .map_err(|_| "Could not fetch announcements feed".to_string())?;
     if !response.status().is_success() {
@@ -85,7 +103,7 @@ pub async fn fetch_announcements() -> Result<AnnouncementFeed, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_feed;
+    use super::{announcement_feed_url, parse_feed};
 
     const VALID_FEED: &str = r#"{
         "schemaVersion": 1,
@@ -102,6 +120,26 @@ mod tests {
         },
         "patchNotes": { "cursor": "", "messages": [] }
     }"#;
+
+    #[test]
+    fn announcement_feed_url_bypasses_cdn_cache() {
+        let first = announcement_feed_url(1).unwrap();
+        let second = announcement_feed_url(2).unwrap();
+
+        assert_eq!(first.host_str(), Some("api.github.com"));
+        assert_eq!(
+            first.path(),
+            "/repos/Hakkaiz1/obsy-launcher-hakkaiz/contents/public/announcements.json"
+        );
+        assert_ne!(first, second);
+        assert_eq!(
+            first
+                .query_pairs()
+                .find(|(key, _)| key == "refresh")
+                .map(|(_, value)| value.into_owned()),
+            Some("1".to_string())
+        );
+    }
 
     #[test]
     fn parse_feed_accepts_valid_feed() {
