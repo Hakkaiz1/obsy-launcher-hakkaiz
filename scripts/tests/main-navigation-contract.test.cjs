@@ -66,7 +66,7 @@ test("announcement tabs load and render their corresponding public feed channel"
     /activeSection === "updates" \? feed\?\.updates : feed\?\.patchNotes/,
   );
   assert.match(announcementsPanel, /invoke<AnnouncementFeed>/);
-  assert.match(announcementsPanel, /"get_discord_announcements"/);
+  assert.match(announcementsPanel, /"fetch_announcements"/);
   assert.match(announcementsPanel, /setInterval/);
   assert.match(announcementsPanel, /REFRESH_INTERVAL_MS/);
   assert.match(announcementsPanel, /Carregando/);

@@ -50,9 +50,7 @@ export const AnnouncementsPanel = ({
     setLoading(true);
     setError(null);
     try {
-      const nextFeed = await invoke<AnnouncementFeed>(
-        "get_discord_announcements",
-      );
+      const nextFeed = await invoke<AnnouncementFeed>("fetch_announcements");
       setFeed(nextFeed);
     } catch (reason) {
       console.error("Failed to load Discord announcements", reason);
