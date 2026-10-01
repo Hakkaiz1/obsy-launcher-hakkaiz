@@ -3,12 +3,10 @@ use serde::{Deserialize, Serialize};
 const FEED_URL: &str =
     "https://api.github.com/repos/Hakkaiz1/obsy-launcher-hakkaiz/contents/public/announcements.json";
 
-fn announcement_feed_url(cache_buster: u128) -> Result<reqwest::Url, String> {
+fn announcement_feed_url() -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(FEED_URL)
         .map_err(|error| format!("Announcements feed URL is invalid: {error}"))?;
-    url.query_pairs_mut()
-        .append_pair("ref", "main")
-        .append_pair("refresh", &cache_buster.to_string());
+    url.query_pairs_mut().append_pair("ref", "main");
     Ok(url)
 }
 
@@ -77,14 +75,10 @@ pub fn parse_feed(json: &str) -> Result<AnnouncementFeed, String> {
 
 #[tauri::command]
 pub async fn fetch_announcements() -> Result<AnnouncementFeed, String> {
-    let cache_buster = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| format!("Could not determine current time: {error}"))?
-        .as_millis();
     let response = reqwest::Client::new()
-        .get(announcement_feed_url(cache_buster)?)
+        .get(announcement_feed_url()?)
         .header(reqwest::header::ACCEPT, "application/vnd.github.raw+json")
-        .header(reqwest::header::CACHE_CONTROL, "no-cache")
+        .header(reqwest::header::USER_AGENT, "ObsyLauncher")
         .send()
         .await
         .map_err(|_| "Could not fetch announcements feed".to_string())?;
@@ -122,23 +116,21 @@ mod tests {
     }"#;
 
     #[test]
-    fn announcement_feed_url_bypasses_cdn_cache() {
-        let first = announcement_feed_url(1).unwrap();
-        let second = announcement_feed_url(2).unwrap();
+    fn announcement_feed_url_uses_github_contents_api() {
+        let url = announcement_feed_url().unwrap();
 
-        assert_eq!(first.host_str(), Some("api.github.com"));
+        assert_eq!(url.host_str(), Some("api.github.com"));
         assert_eq!(
-            first.path(),
+            url.path(),
             "/repos/Hakkaiz1/obsy-launcher-hakkaiz/contents/public/announcements.json"
         );
-        assert_ne!(first, second);
         assert_eq!(
-            first
-                .query_pairs()
-                .find(|(key, _)| key == "refresh")
+            url.query_pairs()
+                .find(|(key, _)| key == "ref")
                 .map(|(_, value)| value.into_owned()),
-            Some("1".to_string())
+            Some("main".to_string())
         );
+        assert!(!url.query().unwrap_or_default().contains("refresh"));
     }
 
     #[test]
