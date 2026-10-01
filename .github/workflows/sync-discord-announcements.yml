@@ -1,0 +1,44 @@
+name: Sync Discord announcements
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: discord-announcements
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Sync Discord messages
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_UPDATES_CHANNEL_ID: ${{ vars.DISCORD_UPDATES_CHANNEL_ID }}
+          DISCORD_PATCH_NOTES_CHANNEL_ID: ${{ vars.DISCORD_PATCH_NOTES_CHANNEL_ID }}
+        run: node scripts/sync-discord-announcements.mjs
+
+      - name: Commit updated announcements
+        run: |
+          if git diff --quiet -- public/announcements.json; then
+            echo "No announcement changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/announcements.json
+          git commit -m "chore: sync Discord announcements"
+          git push origin HEAD:main

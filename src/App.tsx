@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { Download, FileText } from "lucide-react";
 import { Header } from "./components/launcher/Header";
+import { AnnouncementsPanel } from "./components/launcher/AnnouncementsPanel";
 import { addGameLog } from "./lib/logger";
 import { LaunchButton } from "./components/launcher/LaunchButton";
 import { ProfileSelector } from "./components/launcher/ProfileSelector";
@@ -192,11 +193,7 @@ const App = () => {
                             {updateStatus}
                           </m.p>
                         )}
-                        <p className="text-muted-foreground text-sm">
-                          {activeSection === "updates"
-                            ? "As atualizações e novidades do launcher aparecerão aqui."
-                            : "As notas das atualizações do servidor aparecerão aqui."}
-                        </p>
+                        <AnnouncementsPanel activeSection={activeSection} />
                       </div>
                     </section>
                   </div>

@@ -1,3 +1,4 @@
+mod announcements;
 pub mod auth;
 mod fs_utils;
 pub mod minecraft;
@@ -996,6 +997,7 @@ pub fn run() {
             remove_profile,
             launch_game,
             is_game_running,
+            announcements::fetch_announcements,
             get_technic_pack_status,
             start_msa_auth,
             poll_msa_auth,
