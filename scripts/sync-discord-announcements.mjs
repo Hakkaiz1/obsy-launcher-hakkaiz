@@ -27,15 +27,22 @@ const parseMessage = (message) => {
     !Array.isArray(message.attachments) ||
     message.attachments.some(
       (attachment) => !attachment || typeof attachment.url !== "string",
-    )
+    ) ||
+    (message.author.global_name != null &&
+      typeof message.author.global_name !== "string") ||
+    (message.member?.nick != null && typeof message.member.nick !== "string")
   ) {
     throw new Error("Discord returned an invalid announcement message");
   }
 
-  const author =
-    message.member?.nick ||
-    message.author.global_name ||
-    message.author.username;
+  const author = [
+    message.member?.nick,
+    message.author.global_name,
+    message.author.username,
+  ].find((name) => typeof name === "string" && name.trim().length > 0);
+  if (!author) {
+    throw new Error("Discord returned a message without an author name");
+  }
   const attachments = message.attachments.flatMap(({ url }) => {
     try {
       const parsed = new URL(url);

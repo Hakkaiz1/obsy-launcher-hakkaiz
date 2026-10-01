@@ -185,6 +185,17 @@ test("preserves an existing feed on missing config or Discord failures", async (
       fetchImpl: async () => response([{ ...message(7), attachments: "bad" }]),
     },
     {
+      name: "malformed author display name",
+      config: env,
+      fetchImpl: async () =>
+        response([
+          {
+            ...message(7),
+            author: { username: "tester", global_name: { invalid: true } },
+          },
+        ]),
+    },
+    {
       name: "exhausted rate limit retries",
       config: env,
       fetchImpl: async () => response({ retry_after: 0 }, 429),
